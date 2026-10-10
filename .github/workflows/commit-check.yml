@@ -1,0 +1,24 @@
+﻿name: Commit Check
+
+on:
+  pull_request:
+    branches:
+      - 'main'
+
+jobs:
+  commit-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: commit-check/commit-check-action@v2
+        with:
+          message: true
+          branch: true
+          pr-title: true
+          job-summary: true
+          pr-comments: true

@@ -1,0 +1,1 @@
+module smart-fridge-backend

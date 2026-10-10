@@ -1,0 +1,236 @@
+﻿openapi: 3.1.0
+
+info:
+  title: Smart Fridge API
+  description: Smart Fridge app backend API
+  contact:
+    name: korjeek
+    email: olegka823@gmail.com
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: auth
+    description: User authentication and authorization
+
+security:
+  - BearerAuth: [ ]
+
+paths:
+  /auth/sign-up:
+    post:
+      tags:
+        - auth
+      summary: Register a new user
+      description: Creates a new user and returns an access token
+      operationId: signUp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        201:
+          description: User Created
+          $ref: "#/components/responses/AuthSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        409:
+          $ref: "#/components/responses/Conflict"
+        429:
+          $ref: "#/components/responses/TooManyRequests"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/sign-in:
+    post:
+      tags:
+        - auth
+      summary: Sign in an existing user
+      description: Returns an access token for valid credentials
+      operationId: signIn
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        200:
+          description: User sign in
+          $ref: "#/components/responses/AuthSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        429:
+          $ref: "#/components/responses/TooManyRequests"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Refresh the token pair
+      operationId: refresh
+      security: []
+      parameters:
+        - name: refresh_token
+          in: cookie
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          $ref: "#/components/responses/AuthSuccess"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        429:
+          $ref: "#/components/responses/TooManyRequests"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Log out
+      description: >
+        Revokes the refresh token from the cookie and clears the cookie.
+        Idempotent: returns 204 even if the token is already invalid.
+      operationId: logout
+      security: []
+      parameters:
+        - name: refresh_token
+          in: cookie
+          required: false
+          schema:
+            type: string
+      responses:
+        204:
+          description: Logged out
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/ClearedRefreshTokenCookie"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  schemas:
+    Credentials:
+      type: object
+      required: [ email, password ]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+
+    TokenResponse:
+      type: object
+      required: [ accessToken, tokenType, expiresIn ]
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          enum: [ Bearer ]
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+          example: 900
+
+    Problem:
+      type: object
+      description: Error details (RFC 9457)
+      required: [ type, title, status ]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        requestId:
+          type: string
+
+  headers:
+    RefreshTokenCookie:
+      description: New refresh token
+      schema:
+        type: string
+        example: refresh_token=abc123; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2592000
+    ClearedRefreshTokenCookie:
+      description: Expires the refresh cookie
+      schema:
+        type: string
+        example: refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=0
+
+  responses:
+    AuthSuccess:
+      description: Access token in body, refresh token in HttpOnly cookie
+      headers:
+        Set-Cookie:
+          $ref: "#/components/headers/RefreshTokenCookie"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TokenResponse"
+
+    BadRequest:
+      description: Invalid request body or validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: Missing, invalid or expired credentials
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: A user with this email already exists
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

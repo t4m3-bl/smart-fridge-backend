@@ -49,10 +49,15 @@ func (m *Mode) UnmarshalText(text []byte) error {
 }
 
 type Config struct {
-	Mode   Mode   `mapstructure:"mode"`
-	HTTP   HTTP   `mapstructure:"http"`
-	Auth   Auth   `mapstructure:"auth"`
-	Argon2 Argon2 `mapstructure:"argon2"`
+	Mode     Mode     `mapstructure:"mode"`
+	HTTP     HTTP     `mapstructure:"http"`
+	Database Database `mapstructure:"database"`
+	Auth     Auth     `mapstructure:"auth"`
+	Argon2   Argon2   `mapstructure:"argon2"`
+}
+
+type Database struct {
+	URL string `mapstructure:"url"`
 }
 
 type HTTP struct {
@@ -139,6 +144,10 @@ func (c *Config) Validate() error {
 	if len(c.Auth.JWTSecret) < minJWTSecretLen {
 		errs = append(errs, fmt.Errorf("auth.jwt_secret must be at least %d bytes (set %s_AUTH_JWT_SECRET)", minJWTSecretLen, envPrefix))
 	}
+	if c.Database.URL == "" {
+		errs = append(errs, fmt.Errorf("database.url is required (set %s_DATABASE_URL)", envPrefix))
+	}
+
 	if c.Auth.AccessTTL <= 0 {
 		errs = append(errs, errors.New("auth.access_ttl must be positive"))
 	}
@@ -163,6 +172,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", "10s")
 	v.SetDefault("http.cors_origins", []string{})
+
+	v.SetDefault("database.url", "")
 
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.access_ttl", "15m")

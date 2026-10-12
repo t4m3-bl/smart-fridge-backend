@@ -28,6 +28,12 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		problem.Status = http.StatusBadRequest
 		problem.Detail = new(err.Error())
 		problem.Type = "https://smart-fridge.local"
+	} else if errors.Is(err, domain.ErrAlreadyExists) {
+		problem.Status = http.StatusConflict
+	} else if errors.Is(err, domain.ErrInvalidCredentials) || errors.Is(err, domain.ErrInvalidSession) {
+		problem.Status = http.StatusUnauthorized
+	} else if errors.Is(err, domain.ErrNotFound) {
+		problem.Status = http.StatusNotFound
 	} else if code := echo.StatusCode(err); code != 0 {
 		problem.Status = code
 	}

@@ -2,7 +2,7 @@ package app
 
 import (
 	"smart-fridge-backend/internal/config"
-	"smart-fridge-backend/internal/repository/stub"
+	"smart-fridge-backend/internal/repository/postgres"
 	httpserver "smart-fridge-backend/internal/transport/http"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
@@ -29,12 +29,13 @@ func New(cfg *config.Config) *fx.App {
 var infrastructure = fx.Module("infrastructure",
 	fx.Provide(
 		newPasswordHasher,
+		postgres.NewPool,
 
-		fx.Annotate(stub.NewUserRepository,
+		fx.Annotate(postgres.NewUserRepository,
 			fx.As(new(service.UserRepository)),
 			fx.As(new(service.UserRepository1)),
 		),
-		fx.Annotate(stub.NewSessionRepository,
+		fx.Annotate(postgres.NewSessionRepository,
 			fx.As(new(service.SessionRepository)),
 		),
 	),

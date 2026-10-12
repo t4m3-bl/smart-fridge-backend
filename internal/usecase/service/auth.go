@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
@@ -56,13 +57,21 @@ func (s *AuthService) SignUp(ctx context.Context, input dto.CredentialsInput) (d
 }
 
 func (s *AuthService) SignIn(ctx context.Context, input dto.CredentialsInput) (dto.TokenPair, error) {
-	user, err := s.user.FindByEmail(ctx, input.Email)
+	email, err := domain.NewEmail(input.Email)
+	if err != nil {
+		return dto.TokenPair{}, fmt.Errorf("sign in: %w", domain.ErrInvalidCredentials)
+	}
+
+	user, err := s.user.FindByEmail(ctx, string(email))
+	if errors.Is(err, domain.ErrNotFound) {
+		return dto.TokenPair{}, fmt.Errorf("sign in: %w", domain.ErrInvalidCredentials)
+	}
 	if err != nil {
 		return dto.TokenPair{}, fmt.Errorf("sign in: %w", err)
 	}
 
 	if err := s.hasher.Compare(user.PasswordHash, input.Password); err != nil {
-		return dto.TokenPair{}, fmt.Errorf("sign in: %w", err)
+		return dto.TokenPair{}, fmt.Errorf("sign in: %w: %w", domain.ErrInvalidCredentials, err)
 	}
 
 	pair, err := s.session.Create(ctx, user)

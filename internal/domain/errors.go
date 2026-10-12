@@ -1,6 +1,16 @@
 package domain
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrNotFound           = errors.New("not found")
+	ErrAlreadyExists      = errors.New("already exists")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidSession     = errors.New("invalid or expired session")
+)
 
 type ValidationErr struct {
 	field  string

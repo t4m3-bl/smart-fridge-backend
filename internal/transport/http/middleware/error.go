@@ -28,6 +28,8 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		problem.Status = http.StatusBadRequest
 		problem.Detail = new(err.Error())
 		problem.Type = "https://smart-fridge.local"
+	} else if code := echo.StatusCode(err); code != 0 {
+		problem.Status = code
 	}
 
 	problem.Title = http.StatusText(problem.Status)

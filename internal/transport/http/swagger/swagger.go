@@ -19,7 +19,7 @@ const (
 func UseSwagger(e *echo.Echo) {
 	spec, err := api.GetSpecJSON()
 	if err != nil {
-		e.Logger.Error("get open-api spec: ", err)
+		e.Logger.Error("get open-api spec", "error", err)
 		return
 	}
 

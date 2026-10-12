@@ -1,0 +1,19 @@
+mode: dev
+
+http:
+  addr: ":8080"
+  shutdown_timeout: 10s
+  cors_origins:
+    - http://localhost:5173
+
+auth:
+  access_ttl: 15m
+  refresh_ttl: 720h
+  cookie_secure: false
+
+argon2:
+  memory_kib: 65536
+  time: 3
+  threads: 4
+  salt_len: 16
+  key_len: 32

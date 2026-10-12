@@ -24,15 +24,15 @@ type SessionService struct {
 	sessions SessionRepository
 	users    UserRepository1
 
-	access  tokens.JWTTokenManager
-	refresh tokens.RefreshTokenManager
+	access  *tokens.JWTTokenManager
+	refresh *tokens.RefreshTokenManager
 }
 
 func NewSessionService(
 	sessions SessionRepository,
 	users UserRepository1,
-	access tokens.JWTTokenManager,
-	refresh tokens.RefreshTokenManager,
+	access *tokens.JWTTokenManager,
+	refresh *tokens.RefreshTokenManager,
 ) *SessionService {
 	return &SessionService{
 		sessions: sessions,

@@ -9,7 +9,7 @@ import (
 
 type PasswordHasher interface {
 	Hash(plain string) (string, error)
-	Compare(plain, hash string) error
+	Compare(hash, plain string) error
 }
 
 type UserRepository interface {
@@ -21,10 +21,10 @@ type AuthService struct {
 	user   UserRepository
 	hasher PasswordHasher
 
-	session SessionService
+	session *SessionService
 }
 
-func NewAuthService(auth UserRepository, hasher PasswordHasher, session SessionService) *AuthService {
+func NewAuthService(auth UserRepository, hasher PasswordHasher, session *SessionService) *AuthService {
 	return &AuthService{
 		user:    auth,
 		hasher:  hasher,

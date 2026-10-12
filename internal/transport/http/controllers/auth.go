@@ -9,16 +9,16 @@ import (
 )
 
 type AuthController struct {
-	cookies cookie.Factory
+	cookies *cookie.Factory
 
-	auth    service.AuthService
-	session service.SessionService
+	auth    *service.AuthService
+	session *service.SessionService
 }
 
 func NewAuthController(
-	cookies cookie.Factory,
-	auth service.AuthService,
-	session service.SessionService,
+	cookies *cookie.Factory,
+	auth *service.AuthService,
+	session *service.SessionService,
 ) *AuthController {
 	return &AuthController{
 		cookies: cookies,

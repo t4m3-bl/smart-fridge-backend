@@ -1,6 +1,11 @@
 package http
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
@@ -9,26 +14,20 @@ import (
 
 	"github.com/labstack/echo/v5"
 	echoMiddleware "github.com/labstack/echo/v5/middleware"
+	"go.uber.org/fx"
 )
-
-type Params struct {
-	mode config.Mode
-
-	address         string
-	gracefulTimeout time.Duration
-
-	CORSOrigins []string
-	signingKey  string
-}
 
 type Server struct {
 	echo *echo.Echo
 
 	address         string
 	gracefulTimeout time.Duration
+
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
-func NewServer(p Params, h api.StrictServerInterface) (*Server, error) {
+func NewServer(cfg *config.Config, h api.StrictServerInterface) *Server {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.HTTPErrorHandler
 
@@ -36,24 +35,84 @@ func NewServer(p Params, h api.StrictServerInterface) (*Server, error) {
 	e.Use(echoMiddleware.RequestLogger())
 	e.Use(echoMiddleware.Recover())
 
-	e.Use(echoMiddleware.CORS(p.CORSOrigins...))
+	if len(cfg.HTTP.CORSOrigins) > 0 {
+		e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
+			AllowOrigins:     cfg.HTTP.CORSOrigins,
+			AllowCredentials: true,
+		}))
+	}
 	e.Use(echoMiddleware.Gzip())
 
-	e.Use(middleware.JWT(p.signingKey))
+	if cfg.Mode == config.PROD {
+		e.Use(echoMiddleware.Secure())
+	}
+
+	e.Use(middleware.JWT(cfg.Auth.JWTSecret))
 
 	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(h, nil), "/api/v1")
 
-	if p.mode == config.DEV {
+	if cfg.Mode == config.DEV {
 		swagger.UseSwagger(e)
-	}
-
-	if p.mode == config.PROD {
-		e.Use(echoMiddleware.Secure())
 	}
 
 	return &Server{
 		echo:            e,
-		address:         p.address,
-		gracefulTimeout: p.gracefulTimeout,
-	}, nil
+		address:         cfg.HTTP.Addr,
+		gracefulTimeout: cfg.HTTP.ShutdownTimeout,
+	}
+}
+
+func (s *Server) Start(ctx context.Context, onFatal func(error)) error {
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", s.address)
+	if err != nil {
+		return fmt.Errorf("http listen %s: %w", s.address, err)
+	}
+
+	serveCtx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	s.done = make(chan struct{})
+
+	sc := echo.StartConfig{
+		Listener:        ln,
+		HideBanner:      true,
+		GracefulTimeout: s.gracefulTimeout,
+		OnShutdownError: func(err error) {
+			s.echo.Logger.Error("http graceful shutdown failed", slog.Any("error", err))
+		},
+	}
+
+	go func() {
+		defer close(s.done)
+		if err := sc.Start(serveCtx, s.echo); err != nil {
+			onFatal(fmt.Errorf("http server: %w", err))
+		}
+	}()
+
+	return nil
+}
+
+func (s *Server) Stop(ctx context.Context) error {
+	if s.cancel == nil {
+		return nil
+	}
+	s.cancel()
+
+	select {
+	case <-s.done:
+		return nil
+	case <-ctx.Done():
+		return errors.New("http server: shutdown did not finish in time")
+	}
+}
+
+func RegisterLifecycle(lc fx.Lifecycle, s *Server, shutdowner fx.Shutdowner) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			return s.Start(ctx, func(err error) {
+				s.echo.Logger.Error("http server stopped unexpectedly", slog.Any("error", err))
+				_ = shutdowner.Shutdown(fx.ExitCode(1))
+			})
+		},
+		OnStop: s.Stop,
+	})
 }

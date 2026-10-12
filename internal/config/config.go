@@ -3,10 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -18,7 +21,35 @@ const (
 	PROD
 )
 
+func (m Mode) String() string {
+	switch m {
+	case DEV:
+		return "dev"
+	case TEST:
+		return "test"
+	case PROD:
+		return "prod"
+	default:
+		return fmt.Sprintf("Mode(%d)", int(m))
+	}
+}
+
+func (m *Mode) UnmarshalText(text []byte) error {
+	switch strings.ToLower(strings.TrimSpace(string(text))) {
+	case "dev":
+		*m = DEV
+	case "test":
+		*m = TEST
+	case "prod":
+		*m = PROD
+	default:
+		return fmt.Errorf("unknown mode %q, expected dev, test or prod", text)
+	}
+	return nil
+}
+
 type Config struct {
+	Mode   Mode   `mapstructure:"mode"`
 	HTTP   HTTP   `mapstructure:"http"`
 	Auth   Auth   `mapstructure:"auth"`
 	Argon2 Argon2 `mapstructure:"argon2"`
@@ -31,9 +62,10 @@ type HTTP struct {
 }
 
 type Auth struct {
-	JWTSecret  string        `mapstructure:"jwt_secret"`
-	AccessTTL  time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
+	JWTSecret    string        `mapstructure:"jwt_secret"`
+	AccessTTL    time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL   time.Duration `mapstructure:"refresh_ttl"`
+	CookieSecure bool          `mapstructure:"cookie_secure"`
 }
 
 type Argon2 struct {
@@ -45,11 +77,16 @@ type Argon2 struct {
 }
 
 const (
-	envPrefix  = ""
-	envFileVar = ""
+	envPrefix       = "SMART_FRIDGE"
+	envFileVar      = "SMART_FRIDGE_CONFIG"
+	minJWTSecretLen = 32
 )
 
 func Load() (*Config, error) {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("load .env: %w", err)
+	}
+
 	v := viper.New()
 	setDefaults(v)
 
@@ -73,14 +110,56 @@ func Load() (*Config, error) {
 	}
 
 	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
+	err := v.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+		mapstructure.StringToTimeDurationHookFunc(),
+		mapstructure.StringToSliceHookFunc(","),
+		mapstructure.TextUnmarshallerHookFunc(),
+	)))
+	if err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	return &cfg, nil
 }
 
+func (c *Config) Validate() error {
+	var errs []error
+
+	if c.HTTP.Addr == "" {
+		errs = append(errs, errors.New("http.addr is required"))
+	}
+	if c.HTTP.ShutdownTimeout <= 0 {
+		errs = append(errs, errors.New("http.shutdown_timeout must be positive"))
+	}
+
+	if len(c.Auth.JWTSecret) < minJWTSecretLen {
+		errs = append(errs, fmt.Errorf("auth.jwt_secret must be at least %d bytes (set %s_AUTH_JWT_SECRET)", minJWTSecretLen, envPrefix))
+	}
+	if c.Auth.AccessTTL <= 0 {
+		errs = append(errs, errors.New("auth.access_ttl must be positive"))
+	}
+	if c.Auth.RefreshTTL <= c.Auth.AccessTTL {
+		errs = append(errs, errors.New("auth.refresh_ttl must be greater than auth.access_ttl"))
+	}
+	if c.Mode == PROD && !c.Auth.CookieSecure {
+		errs = append(errs, errors.New("auth.cookie_secure must be true in prod mode"))
+	}
+
+	if c.Argon2.MemoryKiB == 0 || c.Argon2.Time == 0 || c.Argon2.Threads == 0 ||
+		c.Argon2.SaltLen == 0 || c.Argon2.KeyLen == 0 {
+		errs = append(errs, errors.New("argon2 parameters must be positive"))
+	}
+
+	return errors.Join(errs...)
+}
+
 func setDefaults(v *viper.Viper) {
+	v.SetDefault("mode", "dev")
+
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", "10s")
 	v.SetDefault("http.cors_origins", []string{})
@@ -88,6 +167,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.access_ttl", "15m")
 	v.SetDefault("auth.refresh_ttl", "720h")
+	v.SetDefault("auth.cookie_secure", true)
 
 	v.SetDefault("argon2.memory_kib", 64*1024)
 	v.SetDefault("argon2.time", 3)

@@ -39,6 +39,7 @@ var infrastructure = fx.Module("infrastructure",
 			fx.As(new(service.SessionRepository)),
 		),
 	),
+	fx.Invoke(postgres.RegisterLifecycle),
 )
 
 var usecases = fx.Module("usecases",
@@ -79,5 +80,5 @@ func newRefreshTokenManager(cfg *config.Config) *tokens.RefreshTokenManager {
 }
 
 func newCookieFactory(cfg *config.Config) *cookie.Factory {
-	return cookie.NewFactory(cfg.Auth.CookieSecure)
+	return cookie.NewFactory(cfg.Mode == config.PROD)
 }

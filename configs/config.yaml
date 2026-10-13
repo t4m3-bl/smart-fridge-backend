@@ -5,11 +5,11 @@ http:
   shutdown_timeout: 10s
   cors_origins:
     - http://localhost:5173
+    - http://localhost:3000
 
 auth:
   access_ttl: 15m
   refresh_ttl: 720h
-  cookie_secure: false
 
 argon2:
   memory_kib: 65536

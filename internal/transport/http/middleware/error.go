@@ -24,21 +24,30 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		Type:      "about:blank",
 	}
 
+	// determine the status code for the error
 	if _, ok := errors.AsType[domain.ValidationErr](err); ok {
 		problem.Status = http.StatusBadRequest
-		problem.Detail = new(err.Error())
-		problem.Type = "https://smart-fridge.local"
-	} else if errors.Is(err, domain.ErrAlreadyExists) {
-		problem.Status = http.StatusConflict
-	} else if errors.Is(err, domain.ErrInvalidCredentials) || errors.Is(err, domain.ErrInvalidSession) {
-		problem.Status = http.StatusUnauthorized
-	} else if errors.Is(err, domain.ErrNotFound) {
-		problem.Status = http.StatusNotFound
-	} else if code := echo.StatusCode(err); code != 0 {
-		problem.Status = code
+	} else {
+		switch {
+		case errors.Is(err, domain.ErrAlreadyExists):
+			problem.Status = http.StatusConflict
+
+		case errors.Is(err, domain.ErrInvalidCredentials),
+			errors.Is(err, domain.ErrInvalidSession):
+			problem.Status = http.StatusUnauthorized
+
+		case errors.Is(err, domain.ErrNotFound):
+			problem.Status = http.StatusNotFound
+
+		case echo.StatusCode(err) != 0:
+			problem.Status = echo.StatusCode(err)
+		}
 	}
 
 	problem.Title = http.StatusText(problem.Status)
+	if problem.Status < http.StatusInternalServerError {
+		problem.Detail = new(err.Error())
+	}
 
 	c.Response().Header().Set(echo.HeaderContentType, MIMEApplicationProblemJSON)
 	if errJSON := c.JSON(problem.Status, problem); errJSON != nil {

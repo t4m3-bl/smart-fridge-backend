@@ -67,10 +67,9 @@ type HTTP struct {
 }
 
 type Auth struct {
-	JWTSecret    string        `mapstructure:"jwt_secret"`
-	AccessTTL    time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL   time.Duration `mapstructure:"refresh_ttl"`
-	CookieSecure bool          `mapstructure:"cookie_secure"`
+	JWTSecret  string        `mapstructure:"jwt_secret"`
+	AccessTTL  time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
 }
 
 type Argon2 struct {
@@ -154,9 +153,6 @@ func (c *Config) Validate() error {
 	if c.Auth.RefreshTTL <= c.Auth.AccessTTL {
 		errs = append(errs, errors.New("auth.refresh_ttl must be greater than auth.access_ttl"))
 	}
-	if c.Mode == PROD && !c.Auth.CookieSecure {
-		errs = append(errs, errors.New("auth.cookie_secure must be true in prod mode"))
-	}
 
 	if c.Argon2.MemoryKiB == 0 || c.Argon2.Time == 0 || c.Argon2.Threads == 0 ||
 		c.Argon2.SaltLen == 0 || c.Argon2.KeyLen == 0 {
@@ -178,7 +174,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.access_ttl", "15m")
 	v.SetDefault("auth.refresh_ttl", "720h")
-	v.SetDefault("auth.cookie_secure", true)
 
 	v.SetDefault("argon2.memory_kib", 64*1024)
 	v.SetDefault("argon2.time", 3)

@@ -53,7 +53,7 @@ func NewEmail(raw string) (Email, error) {
 	}
 
 	addr, err := mail.ParseAddress(raw)
-	if err != nil || addr.Address != raw {
+	if err != nil || addr.Address != raw || !strings.Contains(addr.Address, ".") {
 		return "", NewValidationErr("email", "string is not an email address")
 	}
 

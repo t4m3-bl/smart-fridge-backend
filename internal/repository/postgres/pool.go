@@ -13,29 +13,16 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewPool(lc fx.Lifecycle, cfg *config.Config) (*pgxpool.Pool, error) {
+func NewPool(cfg *config.Config) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(context.Background(), cfg.Database.URL)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			if err := pool.Ping(ctx); err != nil {
-				return fmt.Errorf("ping postgres: %w", err)
-			}
-			return migrate(ctx, pool)
-		},
-		OnStop: func(context.Context) error {
-			pool.Close()
-			return nil
-		},
-	})
-
 	return pool, nil
 }
 
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
+func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
@@ -54,4 +41,19 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	return nil
+}
+
+func RegisterLifecycle(lc fx.Lifecycle, pool *pgxpool.Pool) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			if err := pool.Ping(ctx); err != nil {
+				return fmt.Errorf("ping postgres: %w", err)
+			}
+			return Migrate(ctx, pool)
+		},
+		OnStop: func(context.Context) error {
+			pool.Close()
+			return nil
+		},
+	})
 }

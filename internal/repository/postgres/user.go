@@ -9,27 +9,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type UserRepository struct {
 	q *sqlc.Queries
 }
 
-func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{q: sqlc.New(pool)}
+func NewUserRepository(db sqlc.DBTX) *UserRepository {
+	return &UserRepository{q: sqlc.New(db)}
 }
 
 func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
-	err := r.q.CreateUser(ctx, sqlc.CreateUserParams{
+	if err := r.q.CreateUser(ctx, sqlc.CreateUserParams{
 		ID:           uuid.UUID(user.ID),
 		Email:        string(user.Email),
 		PasswordHash: &user.PasswordHash,
-	})
-	if isUniqueViolation(err) {
-		return fmt.Errorf("create user: %w", domain.ErrAlreadyExists)
-	}
-	if err != nil {
+	}); err != nil {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
+			return fmt.Errorf("create user: %w", domain.ErrAlreadyExists)
+		}
 		return fmt.Errorf("create user: %w", err)
 	}
 
@@ -39,7 +38,10 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	row, err := r.q.GetUserByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("find user by email: %w", notFound(err))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("find user by email: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("find user by email: %w", err)
 	}
 
 	return toDomainUser(row.ID, row.Email, row.PasswordHash), nil
@@ -48,7 +50,10 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain
 func (r *UserRepository) FindByID(ctx context.Context, id domain.ID) (*domain.User, error) {
 	row, err := r.q.GetUserByID(ctx, uuid.UUID(id))
 	if err != nil {
-		return nil, fmt.Errorf("find user by id: %w", notFound(err))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("find user by id: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("find user by id: %w", err)
 	}
 
 	return toDomainUser(row.ID, row.Email, row.PasswordHash), nil
@@ -64,12 +69,4 @@ func toDomainUser(id uuid.UUID, email string, passwordHash *string) *domain.User
 	}
 
 	return user
-}
-
-func notFound(err error) error {
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ErrNotFound
-	}
-
-	return err
 }

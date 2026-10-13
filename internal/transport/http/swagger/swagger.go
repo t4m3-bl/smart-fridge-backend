@@ -12,8 +12,8 @@ import (
 var swaggerUI string
 
 const (
-	specPath = "/api/v1/openapi.json"
-	docsPath = "/swagger/ui"
+	SpecPath = "/api/v1/openapi.json"
+	DocsPath = "/swagger/ui"
 )
 
 func UseSwagger(e *echo.Echo) {
@@ -23,11 +23,11 @@ func UseSwagger(e *echo.Echo) {
 		return
 	}
 
-	e.GET(specPath, func(c *echo.Context) error {
+	e.GET(SpecPath, func(c *echo.Context) error {
 		return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, spec)
 	})
 
-	e.GET(docsPath, func(c *echo.Context) error {
+	e.GET(DocsPath, func(c *echo.Context) error {
 		return c.HTML(http.StatusOK, swaggerUI)
 	})
 }

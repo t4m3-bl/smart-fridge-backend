@@ -17,6 +17,10 @@ import (
 	"go.uber.org/fx"
 )
 
+const apiBasePath = "/api/v1"
+
+var ErrShutdownTimeout = errors.New("http server: shutdown did not finish in time")
+
 type Server struct {
 	echo *echo.Echo
 
@@ -27,7 +31,13 @@ type Server struct {
 	done   chan struct{}
 }
 
-func NewServer(cfg *config.Config, h api.StrictServerInterface) *Server {
+func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error) {
+	// get open-api spec
+	spec, err := api.GetSpec()
+	if err != nil {
+		return nil, fmt.Errorf("get spec: %w", err)
+	}
+
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.HTTPErrorHandler
 
@@ -43,14 +53,17 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) *Server {
 	}
 	e.Use(echoMiddleware.Gzip())
 
+	// prod mode addons
 	if cfg.Mode == config.PROD {
 		e.Use(echoMiddleware.Secure())
 	}
 
-	e.Use(middleware.JWT(cfg.Auth.JWTSecret))
+	// routes and controllers registration
+	apiGroup := e.Group(apiBasePath, middleware.JWT(cfg.Auth.JWTSecret, spec, apiBasePath))
+	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
+	e.GET("/favicon.ico", noContentHandler)
 
-	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(h, nil), "/api/v1")
-
+	// dev mode addons
 	if cfg.Mode == config.DEV {
 		swagger.UseSwagger(e)
 	}
@@ -59,7 +72,7 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) *Server {
 		echo:            e,
 		address:         cfg.HTTP.Addr,
 		gracefulTimeout: cfg.HTTP.ShutdownTimeout,
-	}
+	}, nil
 }
 
 func (s *Server) Start(ctx context.Context, onFatal func(error)) error {
@@ -101,7 +114,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-s.done:
 		return nil
 	case <-ctx.Done():
-		return errors.New("http server: shutdown did not finish in time")
+		return ErrShutdownTimeout
 	}
 }
 

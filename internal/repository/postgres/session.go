@@ -26,7 +26,13 @@ func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
 }
 
 func (r *SessionRepository) Create(ctx context.Context, session *domain.Session) error {
-	if err := create(ctx, r.q, session); err != nil {
+	if err := r.q.CreateSession(ctx, sqlc.CreateSessionParams{
+		ID:               uuid.UUID(session.ID),
+		UserID:           uuid.UUID(session.UserID),
+		RefreshTokenHash: session.RefreshTokenHash,
+		CreatedAt:        session.CreatedAt,
+		ExpiresAt:        session.CreatedAt.Add(session.ExpiresIn),
+	}); err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
@@ -52,7 +58,13 @@ func (r *SessionRepository) Rotate(ctx context.Context, oldRefresh, newRefresh s
 			return err
 		}
 
-		return create(ctx, q, session)
+		return q.CreateSession(ctx, sqlc.CreateSessionParams{
+			ID:               uuid.UUID(session.ID),
+			UserID:           uuid.UUID(session.UserID),
+			RefreshTokenHash: session.RefreshTokenHash,
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.CreatedAt.Add(session.ExpiresIn),
+		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("rotate session: %w", err)
@@ -67,14 +79,4 @@ func (r *SessionRepository) Revoke(ctx context.Context, tokenHash string) error 
 	}
 
 	return nil
-}
-
-func create(ctx context.Context, q *sqlc.Queries, session *domain.Session) error {
-	return q.CreateSession(ctx, sqlc.CreateSessionParams{
-		ID:               uuid.UUID(session.ID),
-		UserID:           uuid.UUID(session.UserID),
-		RefreshTokenHash: session.RefreshTokenHash,
-		CreatedAt:        session.CreatedAt,
-		ExpiresAt:        session.CreatedAt.Add(session.ExpiresIn),
-	})
 }

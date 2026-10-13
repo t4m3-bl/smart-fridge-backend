@@ -1,31 +1,52 @@
 package middleware
 
 import (
-	"strings"
+	"net/http"
+	"regexp"
+	"smart-fridge-backend/internal/transport/http/swagger"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	echojwt "github.com/labstack/echo-jwt/v5"
 	"github.com/labstack/echo/v5"
 )
 
-var publicPrefixes = []string{"/api/v1/auth/", "/swagger/ui", "/api/v1/openapi.json"}
+func JWT(signingKey string, spec *openapi3.T, basePath string) echo.MiddlewareFunc {
+	public := buildPublicRoutes(spec, basePath)
+	public[routeKey(http.MethodGet, swagger.SpecPath)] = struct{}{}
 
-func JWT(signingKey string) echo.MiddlewareFunc {
 	return echojwt.WithConfig(echojwt.Config{
 		SigningKey: []byte(signingKey),
-		Skipper:    isPublic,
+		Skipper: func(c *echo.Context) bool {
+			_, ok := public[routeKey(c.Request().Method, c.Path())]
+			return ok
+		},
 		ErrorHandler: func(_ *echo.Context, err error) error {
 			return echo.ErrUnauthorized.Wrap(err)
 		},
 	})
 }
 
-func isPublic(c *echo.Context) bool {
-	path := c.Request().URL.Path
-	for _, p := range publicPrefixes {
-		if strings.HasPrefix(path, p) {
-			return true
+var pathParam = regexp.MustCompile(`\{([^}/]+)}`)
+
+func buildPublicRoutes(spec *openapi3.T, basePath string) map[string]struct{} {
+	public := make(map[string]struct{})
+
+	for path, item := range spec.Paths.Map() {
+		echoPath := basePath + pathParam.ReplaceAllString(path, ":$1")
+
+		for method, op := range item.Operations() {
+			sec := op.Security
+			if sec == nil {
+				sec = &spec.Security
+			}
+			if len(*sec) == 0 {
+				public[routeKey(method, echoPath)] = struct{}{}
+			}
 		}
 	}
+	return public
+}
 
-	return false
+func routeKey(method, path string) string {
+	return method + " " + path
 }

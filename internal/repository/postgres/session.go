@@ -10,18 +10,22 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type SessionRepository struct {
-	pool *pgxpool.Pool
-	q    *sqlc.Queries
+type TxDB interface {
+	sqlc.DBTX
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
-func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
+type SessionRepository struct {
+	db TxDB
+	q  *sqlc.Queries
+}
+
+func NewSessionRepository(db TxDB) *SessionRepository {
 	return &SessionRepository{
-		pool: pool,
-		q:    sqlc.New(pool),
+		db: db,
+		q:  sqlc.New(db),
 	}
 }
 
@@ -42,7 +46,7 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 func (r *SessionRepository) Rotate(ctx context.Context, oldRefresh, newRefresh string, expiresIn time.Duration) (*domain.Session, error) {
 	var session *domain.Session
 
-	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
 		q := r.q.WithTx(tx)
 
 		userID, err := q.RevokeActiveSession(ctx, oldRefresh)

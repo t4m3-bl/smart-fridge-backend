@@ -84,3 +84,119 @@ func TestUserRepository_Create(t *testing.T) {
 		})
 	}
 }
+
+func TestUserRepository_FindByEmail(t *testing.T) {
+	ctx := context.Background()
+
+	tx, err := testPool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+
+	existing := &domain.User{
+		ID:           domain.ID(uuid.New()),
+		Email:        domain.Email("find-by-email@example.com"),
+		PasswordHash: "hashed_password",
+	}
+
+	repo := postgres.NewUserRepository(tx)
+	require.NoError(t, repo.Create(ctx, existing))
+
+	type TestCase struct {
+		name  string
+		email string
+		want  *domain.User
+		err   error
+	}
+
+	tests := []TestCase{
+		{
+			name:  "existing user",
+			email: "find-by-email@example.com",
+			want:  existing,
+			err:   nil,
+		},
+		{
+			name:  "email in different case",
+			email: "Find-By-Email@Example.COM",
+			want:  existing,
+			err:   nil,
+		},
+		{
+			name:  "unknown email",
+			email: "unknown@example.com",
+			want:  nil,
+			err:   domain.ErrNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			is := require.New(t)
+
+			got, err := repo.FindByEmail(ctx, tc.email)
+			if tc.err != nil {
+				is.ErrorIs(err, tc.err)
+				is.Nil(got)
+				return
+			}
+
+			is.NoError(err)
+			is.Equal(tc.want, got)
+		})
+	}
+}
+
+func TestUserRepository_FindByID(t *testing.T) {
+	ctx := context.Background()
+
+	tx, err := testPool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+
+	existing := &domain.User{
+		ID:           domain.ID(uuid.New()),
+		Email:        domain.Email("find-by-id@example.com"),
+		PasswordHash: "hashed_password",
+	}
+
+	repo := postgres.NewUserRepository(tx)
+	require.NoError(t, repo.Create(ctx, existing))
+
+	type TestCase struct {
+		name string
+		id   domain.ID
+		want *domain.User
+		err  error
+	}
+
+	tests := []TestCase{
+		{
+			name: "existing user",
+			id:   existing.ID,
+			want: existing,
+			err:  nil,
+		},
+		{
+			name: "unknown id",
+			id:   domain.ID(uuid.New()),
+			want: nil,
+			err:  domain.ErrNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			is := require.New(t)
+
+			got, err := repo.FindByID(ctx, tc.id)
+			if tc.err != nil {
+				is.ErrorIs(err, tc.err)
+				is.Nil(got)
+				return
+			}
+
+			is.NoError(err)
+			is.Equal(tc.want, got)
+		})
+	}
+}

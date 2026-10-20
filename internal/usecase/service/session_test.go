@@ -18,27 +18,22 @@ import (
 
 func TestSessionService_Create(t *testing.T) {
 	user := &domain.User{
-		ID:           domain.UserID(uuid.New()),
-		Email:        "example@test.com",
-		PasswordHash: "hash",
+		ID:    domain.UserID(uuid.New()),
+		Email: "example@test.com",
 	}
 	refreshToken := dto.Token{Body: "refresh-body", TTL: 24 * time.Hour}
-	accessToken := dto.Token{Body: "access-body", TTL: time.Hour}
-	refreshErr := errors.New("refresh failed")
-	accessErr := errors.New("access failed")
 	createErr := errors.New("create failed")
 
 	tests := []struct {
 		name    string
-		setup   func(*mockservice.MockSessionRepository, *mockservice.MockAccessTokenGenerator, *mockservice.MockRefreshTokenGenerator)
-		want    dto.TokenPair
+		setup   func(*mockservice.MockSessionRepository, *mockservice.MockRefreshTokenGenerator)
+		want    dto.Token
 		wantErr error
 	}{
 		{
 			name: "successful session creation",
-			setup: func(sessions *mockservice.MockSessionRepository, access *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(refreshToken, nil)
-				access.EXPECT().Generate(user).Return(accessToken, nil)
+			setup: func(sessions *mockservice.MockSessionRepository, refresh *mockservice.MockRefreshTokenGenerator) {
+				refresh.EXPECT().Generate().Return(refreshToken)
 				sessions.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 					func(_ context.Context, s *domain.Session) error {
 						assert.Equal(t, user.ID, s.UserID)
@@ -47,28 +42,12 @@ func TestSessionService_Create(t *testing.T) {
 						return nil
 					})
 			},
-			want: dto.TokenPair{Refresh: refreshToken, Access: accessToken},
-		},
-		{
-			name: "refresh generate fails",
-			setup: func(_ *mockservice.MockSessionRepository, _ *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(dto.Token{}, refreshErr)
-			},
-			wantErr: refreshErr,
-		},
-		{
-			name: "access generate fails",
-			setup: func(_ *mockservice.MockSessionRepository, access *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(refreshToken, nil)
-				access.EXPECT().Generate(user).Return(dto.Token{}, accessErr)
-			},
-			wantErr: accessErr,
+			want: refreshToken,
 		},
 		{
 			name: "session repository create fails",
-			setup: func(sessions *mockservice.MockSessionRepository, access *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(refreshToken, nil)
-				access.EXPECT().Generate(user).Return(accessToken, nil)
+			setup: func(sessions *mockservice.MockSessionRepository, refresh *mockservice.MockRefreshTokenGenerator) {
+				refresh.EXPECT().Generate().Return(refreshToken)
 				sessions.EXPECT().Create(gomock.Any(), gomock.Any()).Return(createErr)
 			},
 			wantErr: createErr,
@@ -83,14 +62,14 @@ func TestSessionService_Create(t *testing.T) {
 			access := mockservice.NewMockAccessTokenGenerator(ctrl)
 			refresh := mockservice.NewMockRefreshTokenGenerator(ctrl)
 
-			tt.setup(sessions, access, refresh)
+			tt.setup(sessions, refresh)
 
 			svc := service.NewSessionService(sessions, users, access, refresh)
 			got, err := svc.Create(context.Background(), user)
 
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)
-				assert.Equal(t, dto.TokenPair{}, got)
+				assert.Equal(t, dto.Token{}, got)
 				return
 			}
 
@@ -103,9 +82,8 @@ func TestSessionService_Create(t *testing.T) {
 func TestSessionService_Rotate(t *testing.T) {
 	const oldRefresh = "old-refresh-token"
 	user := &domain.User{
-		ID:           domain.UserID(uuid.New()),
-		Email:        "example@test.com",
-		PasswordHash: "hash",
+		ID:    domain.UserID(uuid.New()),
+		Email: "example@test.com",
 	}
 	newRefresh := dto.Token{Body: "new-refresh-body", TTL: 24 * time.Hour}
 	newAccess := dto.Token{Body: "new-access-body", TTL: time.Hour}
@@ -115,7 +93,6 @@ func TestSessionService_Rotate(t *testing.T) {
 		RefreshTokenHash: sha256.Hash(newRefresh.Body),
 		ExpiresIn:        newRefresh.TTL,
 	}
-	refreshErr := errors.New("refresh failed")
 	rotateErr := errors.New("rotate failed")
 	findErr := errors.New("find failed")
 	accessErr := errors.New("access failed")
@@ -129,7 +106,7 @@ func TestSessionService_Rotate(t *testing.T) {
 		{
 			name: "successful rotation",
 			setup: func(sessions *mockservice.MockSessionRepository, users *mockservice.MockUserFinder, access *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(newRefresh, nil)
+				refresh.EXPECT().Generate().Return(newRefresh)
 				sessions.EXPECT().
 					Rotate(gomock.Any(), sha256.Hash(oldRefresh), sha256.Hash(newRefresh.Body), newRefresh.TTL).
 					Return(newSession, nil)
@@ -139,16 +116,9 @@ func TestSessionService_Rotate(t *testing.T) {
 			want: dto.TokenPair{Access: newAccess, Refresh: newRefresh},
 		},
 		{
-			name: "refresh generate fails",
-			setup: func(_ *mockservice.MockSessionRepository, _ *mockservice.MockUserFinder, _ *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(dto.Token{}, refreshErr)
-			},
-			wantErr: refreshErr,
-		},
-		{
 			name: "session rotate fails",
 			setup: func(sessions *mockservice.MockSessionRepository, _ *mockservice.MockUserFinder, _ *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(newRefresh, nil)
+				refresh.EXPECT().Generate().Return(newRefresh)
 				sessions.EXPECT().Rotate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rotateErr)
 			},
 			wantErr: rotateErr,
@@ -156,7 +126,7 @@ func TestSessionService_Rotate(t *testing.T) {
 		{
 			name: "user lookup fails",
 			setup: func(sessions *mockservice.MockSessionRepository, users *mockservice.MockUserFinder, _ *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(newRefresh, nil)
+				refresh.EXPECT().Generate().Return(newRefresh)
 				sessions.EXPECT().Rotate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(newSession, nil)
 				users.EXPECT().FindByID(gomock.Any(), user.ID).Return(nil, findErr)
 			},
@@ -165,7 +135,7 @@ func TestSessionService_Rotate(t *testing.T) {
 		{
 			name: "access generate fails",
 			setup: func(sessions *mockservice.MockSessionRepository, users *mockservice.MockUserFinder, access *mockservice.MockAccessTokenGenerator, refresh *mockservice.MockRefreshTokenGenerator) {
-				refresh.EXPECT().Generate().Return(newRefresh, nil)
+				refresh.EXPECT().Generate().Return(newRefresh)
 				sessions.EXPECT().Rotate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(newSession, nil)
 				users.EXPECT().FindByID(gomock.Any(), user.ID).Return(user, nil)
 				access.EXPECT().Generate(user).Return(dto.Token{}, accessErr)

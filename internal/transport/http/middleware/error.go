@@ -36,8 +36,12 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 			errors.Is(err, domain.ErrInvalidSession):
 			problem.Status = http.StatusUnauthorized
 
-		case errors.Is(err, domain.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound),
+			errors.Is(err, domain.ErrUnknownProvider):
 			problem.Status = http.StatusNotFound
+
+		case errors.Is(err, domain.ErrProviderUnavailable):
+			problem.Status = http.StatusBadGateway
 
 		case echo.StatusCode(err) != 0:
 			problem.Status = echo.StatusCode(err)

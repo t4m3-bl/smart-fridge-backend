@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -54,6 +55,7 @@ type Config struct {
 	Database Database `mapstructure:"database"`
 	Auth     Auth     `mapstructure:"auth"`
 	Argon2   Argon2   `mapstructure:"argon2"`
+	OAuth    OAuth    `mapstructure:"oauth"`
 }
 
 type Database struct {
@@ -81,15 +83,20 @@ type Argon2 struct {
 	KeyLen    uint32 `mapstructure:"key_len"`
 }
 
-type Providers struct {
-	RedirectURL string   `mapstructure:"redirect_url"`
-	Yandex      Provider `mapstructure:"yandex"`
+type OAuth struct {
+	FrontendURL string        `mapstructure:"frontend_url"`
+	Yandex      OAuthProvider `mapstructure:"yandex"`
 }
 
-type Provider struct {
+type OAuthProvider struct {
 	ClientID     string   `mapstructure:"client_id"`
 	ClientSecret string   `mapstructure:"client_secret"`
+	RedirectURL  string   `mapstructure:"redirect_url"`
 	Scopes       []string `mapstructure:"scopes"`
+}
+
+func (p OAuthProvider) Enabled() bool {
+	return p.ClientID != "" && p.ClientSecret != ""
 }
 
 const (
@@ -169,6 +176,18 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("auth.oauth_ttl must be positive"))
 	}
 
+	if _, err := url.ParseRequestURI(c.OAuth.FrontendURL); err != nil {
+		errs = append(errs, fmt.Errorf("oauth.frontend_url is invalid: %w", err))
+	}
+	if (c.OAuth.Yandex.ClientID == "") != (c.OAuth.Yandex.ClientSecret == "") {
+		errs = append(errs, fmt.Errorf("oauth.yandex: set both %[1]s_OAUTH_YANDEX_CLIENT_ID and %[1]s_OAUTH_YANDEX_CLIENT_SECRET or neither", envPrefix))
+	}
+	if c.OAuth.Yandex.Enabled() {
+		if _, err := url.ParseRequestURI(c.OAuth.Yandex.RedirectURL); err != nil {
+			errs = append(errs, fmt.Errorf("oauth.yandex.redirect_url is invalid: %w", err))
+		}
+	}
+
 	if c.Argon2.MemoryKiB == 0 || c.Argon2.Time == 0 || c.Argon2.Threads == 0 ||
 		c.Argon2.SaltLen == 0 || c.Argon2.KeyLen == 0 {
 		errs = append(errs, errors.New("argon2 parameters must be positive"))
@@ -189,6 +208,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.access_ttl", "15m")
 	v.SetDefault("auth.refresh_ttl", "720h")
+	v.SetDefault("auth.oauth_ttl", "10m")
+
+	v.SetDefault("oauth.frontend_url", "http://localhost:3000/")
+	v.SetDefault("oauth.yandex.client_id", "")
+	v.SetDefault("oauth.yandex.client_secret", "")
+	v.SetDefault("oauth.yandex.redirect_url", "http://localhost:8080/api/v1/auth/yandex/callback")
+	v.SetDefault("oauth.yandex.scopes", []string{"login:email", "login:info"})
 
 	v.SetDefault("argon2.memory_kib", 64*1024)
 	v.SetDefault("argon2.time", 3)

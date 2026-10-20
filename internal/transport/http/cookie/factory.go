@@ -30,6 +30,18 @@ func (f *Factory) CreateSecuredCookie(name, value string, maxAge time.Duration) 
 	}
 }
 
+func (f *Factory) CreateOAuthCookie(name, value string, maxAge time.Duration) *http.Cookie {
+	ck := f.CreateSecuredCookie(name, value, maxAge)
+	ck.SameSite = http.SameSiteLaxMode
+	return ck
+}
+
+func (f *Factory) ClearOAuthCookie(name string) *http.Cookie {
+	ck := f.CreateOAuthCookie(name, "", 0)
+	ck.MaxAge = -1
+	return ck
+}
+
 func (f *Factory) CreateRefreshTokenCookie(refresh dto.Token) *http.Cookie {
 	return f.CreateSecuredCookie(
 		"refresh_token",
@@ -39,5 +51,7 @@ func (f *Factory) CreateRefreshTokenCookie(refresh dto.Token) *http.Cookie {
 }
 
 func (f *Factory) ClearCookie(name string) *http.Cookie {
-	return f.CreateSecuredCookie(name, "", 0)
+	ck := f.CreateSecuredCookie(name, "", 0)
+	ck.MaxAge = -1
+	return ck
 }

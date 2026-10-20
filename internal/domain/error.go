@@ -11,6 +11,9 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrInvalidSession      = errors.New("invalid or expired session")
 	ErrUnprocessableEntity = errors.New("unprocessable entity")
+	ErrUnknownProvider     = errors.New("unknown oauth provider")
+	ErrProviderUnavailable = errors.New("oauth provider unavailable")
+	ErrEmailRequired       = errors.New("oauth provider did not return an email")
 )
 
 type ValidationErr struct {

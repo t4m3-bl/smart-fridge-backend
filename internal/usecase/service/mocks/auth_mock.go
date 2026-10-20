@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	domain "smart-fridge-backend/internal/domain"
 	dto "smart-fridge-backend/internal/dto"
+	oauth "smart-fridge-backend/internal/usecase/auth/oauth"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,10 +44,10 @@ func (m *MockSessionCreator) EXPECT() *MockSessionCreatorMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockSessionCreator) Create(ctx context.Context, user *domain.User) (dto.TokenPair, error) {
+func (m *MockSessionCreator) Create(ctx context.Context, user *domain.User) (dto.Token, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, user)
-	ret0, _ := ret[0].(dto.TokenPair)
+	ret0, _ := ret[0].(dto.Token)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -149,7 +150,7 @@ func (mr *MockUserRepositoryMockRecorder) Create(ctx, user any) *gomock.Call {
 }
 
 // FindByEmail mocks base method.
-func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (m *MockUserRepository) FindByEmail(ctx context.Context, email domain.Email) (*domain.User, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByEmail", ctx, email)
 	ret0, _ := ret[0].(*domain.User)
@@ -161,4 +162,96 @@ func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*do
 func (mr *MockUserRepositoryMockRecorder) FindByEmail(ctx, email any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByEmail", reflect.TypeOf((*MockUserRepository)(nil).FindByEmail), ctx, email)
+}
+
+// FindByIdentity mocks base method.
+func (m *MockUserRepository) FindByIdentity(ctx context.Context, provider domain.Provider, uid string) (*domain.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByIdentity", ctx, provider, uid)
+	ret0, _ := ret[0].(*domain.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindByIdentity indicates an expected call of FindByIdentity.
+func (mr *MockUserRepositoryMockRecorder) FindByIdentity(ctx, provider, uid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByIdentity", reflect.TypeOf((*MockUserRepository)(nil).FindByIdentity), ctx, provider, uid)
+}
+
+// MockOauthTokensGenerator is a mock of OauthTokensGenerator interface.
+type MockOauthTokensGenerator struct {
+	ctrl     *gomock.Controller
+	recorder *MockOauthTokensGeneratorMockRecorder
+	isgomock struct{}
+}
+
+// MockOauthTokensGeneratorMockRecorder is the mock recorder for MockOauthTokensGenerator.
+type MockOauthTokensGeneratorMockRecorder struct {
+	mock *MockOauthTokensGenerator
+}
+
+// NewMockOauthTokensGenerator creates a new mock instance.
+func NewMockOauthTokensGenerator(ctrl *gomock.Controller) *MockOauthTokensGenerator {
+	mock := &MockOauthTokensGenerator{ctrl: ctrl}
+	mock.recorder = &MockOauthTokensGeneratorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOauthTokensGenerator) EXPECT() *MockOauthTokensGeneratorMockRecorder {
+	return m.recorder
+}
+
+// Generate mocks base method.
+func (m *MockOauthTokensGenerator) Generate() dto.OAuthTokenPair {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Generate")
+	ret0, _ := ret[0].(dto.OAuthTokenPair)
+	return ret0
+}
+
+// Generate indicates an expected call of Generate.
+func (mr *MockOauthTokensGeneratorMockRecorder) Generate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Generate", reflect.TypeOf((*MockOauthTokensGenerator)(nil).Generate))
+}
+
+// MockOAuthProviders is a mock of OAuthProviders interface.
+type MockOAuthProviders struct {
+	ctrl     *gomock.Controller
+	recorder *MockOAuthProvidersMockRecorder
+	isgomock struct{}
+}
+
+// MockOAuthProvidersMockRecorder is the mock recorder for MockOAuthProviders.
+type MockOAuthProvidersMockRecorder struct {
+	mock *MockOAuthProviders
+}
+
+// NewMockOAuthProviders creates a new mock instance.
+func NewMockOAuthProviders(ctrl *gomock.Controller) *MockOAuthProviders {
+	mock := &MockOAuthProviders{ctrl: ctrl}
+	mock.recorder = &MockOAuthProvidersMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOAuthProviders) EXPECT() *MockOAuthProvidersMockRecorder {
+	return m.recorder
+}
+
+// Use mocks base method.
+func (m *MockOAuthProviders) Use(providerName string) (oauth.Provider, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Use", providerName)
+	ret0, _ := ret[0].(oauth.Provider)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Use indicates an expected call of Use.
+func (mr *MockOAuthProvidersMockRecorder) Use(providerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Use", reflect.TypeOf((*MockOAuthProviders)(nil).Use), providerName)
 }

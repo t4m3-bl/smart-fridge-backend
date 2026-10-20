@@ -2,6 +2,11 @@ package controllers
 
 import (
 	"context"
+	"crypto/subtle"
+	"errors"
+	"net/http"
+	"net/url"
+	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/cookie"
@@ -15,17 +20,21 @@ type AuthController struct {
 
 	auth    *service.AuthService
 	session *service.SessionService
+
+	frontendURL string
 }
 
 func NewAuthController(
 	cookies *cookie.Factory,
 	auth *service.AuthService,
 	session *service.SessionService,
+	frontendURL string,
 ) *AuthController {
 	return &AuthController{
-		cookies: cookies,
-		auth:    auth,
-		session: session,
+		cookies:     cookies,
+		auth:        auth,
+		session:     session,
+		frontendURL: frontendURL,
 	}
 }
 
@@ -137,45 +146,80 @@ func (c *AuthController) OauthSignIn(_ context.Context, request api.OauthSignInR
 		Headers: api.OauthSignIn302ResponseHeaders{
 			Location: &output.URL,
 			SetCookie: []string{
-				c.cookies.CreateSecuredCookie("oauth_state", output.State, output.TTL).String(),
-				c.cookies.CreateSecuredCookie("oauth_verifier", output.Verifier, output.TTL).String(),
+				c.cookies.CreateOAuthCookie(oauthStateCookie, output.State, output.TTL).String(),
+				c.cookies.CreateOAuthCookie(oauthVerifierCookie, output.Verifier, output.TTL).String(),
 			},
 		},
 	}, nil
 }
 
 func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCallbackRequestObject) (api.OauthCallbackResponseObject, error) {
-	provider := string(request.Provider)
 	p := request.Params
 
-	if p.State != p.OauthState {
+	if subtle.ConstantTimeCompare([]byte(p.State), []byte(p.OauthState)) != 1 {
 		return nil, echo.ErrBadRequest
 	}
 
 	if p.Error != nil && *p.Error != "" {
-		switch *p.Error {
-		case "access_denied":
-			return nil, echo.ErrForbidden
-		case "server_error":
-			return nil, echo.ErrBadGateway
+		if *p.Error == oauthErrAccessDenied {
+			return c.oauthRedirect(oauthErrAccessDenied, nil), nil
 		}
+		return nil, domain.ErrProviderUnavailable
+	}
+
+	if p.Code == nil || *p.Code == "" {
+		return nil, echo.ErrBadRequest
 	}
 
 	refresh, err := c.auth.OauthCallback(ctx, dto.OAuthCallbackInput{
-		ProviderName: provider,
+		ProviderName: string(request.Provider),
 		Code:         *p.Code,
 		Verifier:     p.OauthVerifier,
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, domain.ErrAlreadyExists):
+		return c.oauthRedirect(oauthErrEmailTaken, nil), nil
+	case errors.Is(err, domain.ErrEmailRequired):
+		return c.oauthRedirect(oauthErrEmailRequired, nil), nil
+	case err != nil:
 		return nil, err
+	}
+
+	return c.oauthRedirect("", c.cookies.CreateRefreshTokenCookie(refresh)), nil
+}
+
+const (
+	oauthStateCookie    = "oauth_state"
+	oauthVerifierCookie = "oauth_verifier"
+
+	oauthErrAccessDenied  = "access_denied"
+	oauthErrEmailRequired = "email_required"
+	oauthErrEmailTaken    = "email_taken"
+)
+
+func (c *AuthController) oauthRedirect(errCode string, refresh *http.Cookie) api.OauthCallback302Response {
+	location := c.frontendURL
+	if errCode != "" {
+		if u, err := url.Parse(c.frontendURL); err == nil {
+			q := u.Query()
+			q.Set("error", errCode)
+			u.RawQuery = q.Encode()
+			location = u.String()
+		}
+	}
+
+	cookies := []string{
+		c.cookies.ClearOAuthCookie(oauthStateCookie).String(),
+		c.cookies.ClearOAuthCookie(oauthVerifierCookie).String(),
+	}
+	if refresh != nil {
+		cookies = append(cookies, refresh.String())
 	}
 
 	return api.OauthCallback302Response{
 		Headers: api.OauthCallback302ResponseHeaders{
-			Location: new("http://localhost:3000/"),
-			SetCookie: []string{
-				c.cookies.CreateRefreshTokenCookie(refresh).String(),
-			},
+			Location:  new(location + "/fridge"),
+			SetCookie: cookies,
 		},
-	}, nil
+	}
 }

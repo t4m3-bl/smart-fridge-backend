@@ -2,12 +2,14 @@ package oauth
 
 import (
 	"context"
-	"errors"
+	"net/http"
 	"smart-fridge-backend/internal/config"
+	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
+	"time"
 )
 
-var NotFound = errors.New("unknown OAuth provider")
+const httpTimeout = 10 * time.Second
 
 type Provider interface {
 	AuthCodeURL(state, verifier string) string
@@ -15,20 +17,25 @@ type Provider interface {
 }
 
 type BaseProvider struct {
-	yandex *YandexProvider
+	providers map[string]Provider
 }
 
-func New(cfg config.Providers) *BaseProvider {
-	return &BaseProvider{
-		yandex: NewYandexProvider(cfg.RedirectURL, cfg.Yandex),
+func New(cfg config.OAuth) *BaseProvider {
+	client := &http.Client{Timeout: httpTimeout}
+	providers := make(map[string]Provider)
+
+	if cfg.Yandex.Enabled() {
+		providers[domain.ProviderYandex.String()] = NewYandexProvider(cfg.Yandex, client)
 	}
+
+	return &BaseProvider{providers: providers}
 }
 
 func (p *BaseProvider) Use(providerName string) (Provider, error) {
-	switch providerName {
-	case "yandex":
-		return p.yandex, nil
-	default:
-		return nil, NotFound
+	provider, ok := p.providers[providerName]
+	if !ok {
+		return nil, domain.ErrUnknownProvider
 	}
+
+	return provider, nil
 }

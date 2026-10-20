@@ -34,3 +34,43 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 	)
 	return err
 }
+
+const getIdentitiesByUserID = `-- name: GetIdentitiesByUserID :many
+SELECT id, user_id, provider, provider_user_id, password_hash
+FROM identities
+WHERE user_id = $1
+`
+
+type GetIdentitiesByUserIDRow struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	Provider       string
+	ProviderUserID *string
+	PasswordHash   *string
+}
+
+func (q *Queries) GetIdentitiesByUserID(ctx context.Context, userID uuid.UUID) ([]GetIdentitiesByUserIDRow, error) {
+	rows, err := q.db.Query(ctx, getIdentitiesByUserID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetIdentitiesByUserIDRow
+	for rows.Next() {
+		var i GetIdentitiesByUserIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.ProviderUserID,
+			&i.PasswordHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

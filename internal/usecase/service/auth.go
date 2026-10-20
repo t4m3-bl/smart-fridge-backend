@@ -30,22 +30,36 @@ type OauthTokensGenerator interface {
 	Generate() dto.OAuthTokenPair
 }
 
+type OAuthProviders interface {
+	Use(providerName string) (oauth.Provider, error)
+}
+
 type AuthService struct {
 	user   UserRepository
 	hasher PasswordHasher
 
 	session SessionCreator
 
-	provider oauth.BaseProvider
+	provider OAuthProviders
 	oAuth    OauthTokensGenerator
 	access   AccessTokenGenerator
 }
 
-func NewAuthService(auth UserRepository, hasher PasswordHasher, session SessionCreator) *AuthService {
+func NewAuthService(
+	auth UserRepository,
+	hasher PasswordHasher,
+	session SessionCreator,
+	access AccessTokenGenerator,
+	provider OAuthProviders,
+	oAuth OauthTokensGenerator,
+) *AuthService {
 	return &AuthService{
-		user:    auth,
-		hasher:  hasher,
-		session: session,
+		user:     auth,
+		hasher:   hasher,
+		session:  session,
+		access:   access,
+		provider: provider,
+		oAuth:    oAuth,
 	}
 }
 
@@ -99,7 +113,7 @@ func (s *AuthService) SignIn(ctx context.Context, input dto.CredentialsInput) (d
 
 	pwHash, err := user.GetPasswordHash()
 	if err != nil {
-		return dto.TokenPair{}, fmt.Errorf("sign in: %w", domain.ErrAlreadyExists)
+		return dto.TokenPair{}, fmt.Errorf("sign in: %w", domain.ErrInvalidCredentials)
 	}
 
 	if err := s.hasher.Compare(pwHash, input.Password); err != nil {
@@ -140,6 +154,9 @@ func (s *AuthService) OauthSignIn(providerName string) (dto.OAuthOutput, error) 
 
 func (s *AuthService) OauthCallback(ctx context.Context, input dto.OAuthCallbackInput) (dto.Token, error) {
 	p, err := domain.ToProvider(input.ProviderName)
+	if err != nil {
+		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrUnknownProvider)
+	}
 
 	provider, err := s.provider.Use(input.ProviderName)
 	if err != nil {
@@ -151,45 +168,43 @@ func (s *AuthService) OauthCallback(ctx context.Context, input dto.OAuthCallback
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
-	// User already with this identity exists
 	user, err := s.user.FindByIdentity(ctx, p, info.ProviderUserID)
-	if err == nil {
-		pair, err := s.session.Create(ctx, user)
-		if err != nil {
-			return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
-		}
-
-		return pair, nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	switch {
+	case err == nil:
+		return s.createOAuthSession(ctx, user)
+	case !errors.Is(err, domain.ErrNotFound):
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
-	// User with this email exists
-	email, err := domain.NewEmail(info.Email)
-	if err != nil {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
+	if info.Email == "" {
+		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrEmailRequired)
 	}
 
-	if _, err = s.user.FindByEmail(ctx, email); err != nil {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrAlreadyExists)
-	} else if !errors.Is(err, domain.ErrNotFound) {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
-	}
-
-	// Create new user
 	user, err = domain.NewUser(info.Email)
 	if err != nil {
+		return dto.Token{}, fmt.Errorf("oauth callback: %w: %w", domain.ErrEmailRequired, err)
+	}
+
+	_, err = s.user.FindByEmail(ctx, user.Email)
+	switch {
+	case err == nil:
+		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrAlreadyExists)
+	case !errors.Is(err, domain.ErrNotFound):
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
-	if err := user.AddExternalIdentity(p, input.ProviderName); err != nil {
+	if err := user.AddExternalIdentity(p, info.ProviderUserID); err != nil {
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
-	if err = s.user.Create(ctx, user); err != nil {
+	if err := s.user.Create(ctx, user); err != nil {
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
+	return s.createOAuthSession(ctx, user)
+}
+
+func (s *AuthService) createOAuthSession(ctx context.Context, user *domain.User) (dto.Token, error) {
 	refresh, err := s.session.Create(ctx, user)
 	if err != nil {
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)

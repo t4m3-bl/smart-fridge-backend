@@ -18,3 +18,9 @@ argon2:
   threads: 4
   salt_len: 16
   key_len: 32
+
+oauth:
+  frontend_url: http://localhost:3000
+  yandex:
+    scopes:
+      - login:email

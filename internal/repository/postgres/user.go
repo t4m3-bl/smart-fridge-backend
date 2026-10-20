@@ -78,10 +78,10 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email domain.Email) (*
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
 
-	return &domain.User{
+	return r.withIdentities(ctx, &domain.User{
 		ID:    domain.UserID(row.ID),
 		Email: email,
-	}, nil
+	})
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, id domain.UserID) (*domain.User, error) {
@@ -93,10 +93,10 @@ func (r *UserRepository) FindByID(ctx context.Context, id domain.UserID) (*domai
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
 
-	return &domain.User{
+	return r.withIdentities(ctx, &domain.User{
 		ID:    id,
 		Email: domain.Email(row.Email),
-	}, nil
+	})
 }
 
 func (r *UserRepository) FindByIdentity(ctx context.Context, provider domain.Provider, uid string) (*domain.User, error) {
@@ -111,8 +111,33 @@ func (r *UserRepository) FindByIdentity(ctx context.Context, provider domain.Pro
 		return nil, fmt.Errorf("find user by identity: %w", err)
 	}
 
-	return &domain.User{
+	return r.withIdentities(ctx, &domain.User{
 		ID:    domain.UserID(row.ID),
 		Email: domain.Email(row.Email),
-	}, nil
+	})
+}
+
+func (r *UserRepository) withIdentities(ctx context.Context, user *domain.User) (*domain.User, error) {
+	rows, err := r.q.GetIdentitiesByUserID(ctx, uuid.UUID(user.ID))
+	if err != nil {
+		return nil, fmt.Errorf("get identities: %w", err)
+	}
+
+	user.Identities = make([]domain.Identity, 0, len(rows))
+	for _, row := range rows {
+		provider, err := domain.ToProvider(row.Provider)
+		if err != nil {
+			return nil, fmt.Errorf("get identities: %w", err)
+		}
+
+		user.Identities = append(user.Identities, domain.Identity{
+			IdentityID:     domain.IdentityID(row.ID),
+			UserID:         domain.UserID(row.UserID),
+			Provider:       provider,
+			ProviderUserID: row.ProviderUserID,
+			PasswordHash:   row.PasswordHash,
+		})
+	}
+
+	return user, nil
 }

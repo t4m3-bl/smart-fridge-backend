@@ -3,7 +3,9 @@ package oauth
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"smart-fridge-backend/internal/config"
+	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/httpclient"
 
@@ -11,8 +13,11 @@ import (
 	"golang.org/x/oauth2/yandex"
 )
 
+const yandexUserInfoURL = "https://login.yandex.ru/info?format=json"
+
 type YandexProvider struct {
-	cfg *oauth2.Config
+	cfg    *oauth2.Config
+	client *http.Client
 }
 
 type userInfo struct {
@@ -20,15 +25,16 @@ type userInfo struct {
 	Email string `json:"default_email"`
 }
 
-func NewYandexProvider(redirectURL string, cfg config.Provider) *YandexProvider {
+func NewYandexProvider(cfg config.OAuthProvider, client *http.Client) *YandexProvider {
 	return &YandexProvider{
 		cfg: &oauth2.Config{
 			ClientID:     cfg.ClientID,
 			ClientSecret: cfg.ClientSecret,
 			Endpoint:     yandex.Endpoint,
-			RedirectURL:  redirectURL,
+			RedirectURL:  cfg.RedirectURL,
 			Scopes:       cfg.Scopes,
 		},
+		client: client,
 	}
 }
 
@@ -37,20 +43,24 @@ func (p *YandexProvider) AuthCodeURL(state, verifier string) string {
 }
 
 func (p *YandexProvider) Exchange(ctx context.Context, code, verifier string) (dto.OAuthIdentity, error) {
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, p.client)
+
 	token, err := p.cfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
-		return nil, fmt.Errorf("get token: %w", err)
+		return dto.OAuthIdentity{}, fmt.Errorf("%w: get token: %w", domain.ErrProviderUnavailable, err)
 	}
 
-	client := p.cfg.Client(ctx, token)
-	info, err := httpclient.GetUserInfo[userInfo](ctx, client, "https://login.yandex.ru/info?format=json", token.AccessToken)
+	info, err := httpclient.GetUserInfo[userInfo](ctx, p.client, yandexUserInfoURL, token.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("get user info: %w", err)
+		return dto.OAuthIdentity{}, fmt.Errorf("%w: get user info: %w", domain.ErrProviderUnavailable, err)
+	}
+
+	if info.ID == "" {
+		return dto.OAuthIdentity{}, fmt.Errorf("%w: empty user id", domain.ErrProviderUnavailable)
 	}
 
 	return dto.OAuthIdentity{
 		ProviderUserID: info.ID,
 		Email:          info.Email,
 	}, nil
-	0
 }

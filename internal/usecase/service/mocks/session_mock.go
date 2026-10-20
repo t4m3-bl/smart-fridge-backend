@@ -189,12 +189,11 @@ func (m *MockRefreshTokenGenerator) EXPECT() *MockRefreshTokenGeneratorMockRecor
 }
 
 // Generate mocks base method.
-func (m *MockRefreshTokenGenerator) Generate() (dto.Token, error) {
+func (m *MockRefreshTokenGenerator) Generate() dto.Token {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Generate")
 	ret0, _ := ret[0].(dto.Token)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret0
 }
 
 // Generate indicates an expected call of Generate.

@@ -9,6 +9,7 @@ import (
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/cookie"
+	"smart-fridge-backend/internal/usecase/auth/oauth"
 	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"smart-fridge-backend/internal/usecase/service"
 	"smart-fridge-backend/pkg/crypto/argon2id"
@@ -35,7 +36,6 @@ var infrastructure = fx.Module("infrastructure",
 		fx.Annotate(newPool,
 			fx.As(fx.Self()),
 			fx.As(new(sqlc.DBTX)),
-			fx.As(new(postgres.TxDB)),
 		),
 
 		fx.Annotate(postgres.NewUserRepository,
@@ -53,7 +53,12 @@ var usecases = fx.Module("usecases",
 	fx.Provide(
 		fx.Annotate(newAccessTokenManager, fx.As(new(service.AccessTokenGenerator))),
 		fx.Annotate(newRefreshTokenManager, fx.As(new(service.RefreshTokenGenerator))),
-		fx.Annotate(service.NewSessionService, fx.As(new(service.SessionCreator))),
+		fx.Annotate(service.NewSessionService,
+			fx.As(fx.Self()),
+			fx.As(new(service.SessionCreator)),
+		),
+		fx.Annotate(newOAuthProviders, fx.As(new(service.OAuthProviders))),
+		fx.Annotate(newOAuthTokensManager, fx.As(new(service.OauthTokensGenerator))),
 		service.NewAuthService,
 	),
 )
@@ -61,7 +66,7 @@ var usecases = fx.Module("usecases",
 var transport = fx.Module("transport",
 	fx.Provide(
 		newCookieFactory,
-		controllers.NewAuthController,
+		newAuthController,
 		fx.Annotate(http2.NewHandler, fx.As(new(api.StrictServerInterface))),
 		http2.NewServer,
 	),
@@ -88,6 +93,23 @@ func newAccessTokenManager(cfg *config.Config) (*tokens.JWTTokenManager, error) 
 
 func newRefreshTokenManager(cfg *config.Config) (*tokens.RefreshTokenManager, error) {
 	return tokens.NewRefreshTokenManager(cfg.Auth.RefreshTTL)
+}
+
+func newOAuthProviders(cfg *config.Config) *oauth.BaseProvider {
+	return oauth.New(cfg.OAuth)
+}
+
+func newOAuthTokensManager(cfg *config.Config) (*tokens.OauthTokensManger, error) {
+	return tokens.NewOauthTokensManger(cfg.Auth.OAuthTTl)
+}
+
+func newAuthController(
+	cfg *config.Config,
+	cookies *cookie.Factory,
+	auth *service.AuthService,
+	session *service.SessionService,
+) *controllers.AuthController {
+	return controllers.NewAuthController(cookies, auth, session, cfg.OAuth.FrontendURL)
 }
 
 func newCookieFactory(cfg *config.Config) *cookie.Factory {

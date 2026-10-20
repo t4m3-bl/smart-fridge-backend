@@ -75,7 +75,7 @@ func TestJWTTokenManager_Generate(t *testing.T) {
 	m, err := tokens.NewTokenManager(secret, time.Hour)
 	assert.NoError(t, err)
 
-	user, _ := domain.NewUser("example@test.com", "password_hash")
+	user, _ := domain.NewUser("example@test.com")
 
 	type args struct {
 		user *domain.User

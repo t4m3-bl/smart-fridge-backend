@@ -15,6 +15,12 @@ servers:
 tags:
   - name: auth
     description: User authentication and authorization
+  - name: sync
+    description: Offline-first synchronization of fridge data via actions
+  - name: scan
+    description: Product recognition from codes and photos (online only)
+  - name: photos
+    description: Product photo storage
 
 security:
   - BearerAuth: [ ]
@@ -225,6 +231,241 @@ paths:
         502:
           $ref: "#/components/responses/BadGateway"
 
+  /sync/push:
+    post:
+      tags:
+        - sync
+      summary: Push local actions
+      description: >
+        Applies client actions in order and assigns each accepted action a seq.
+        Idempotent by actionId: a repeated action returns its original result.
+        A rejected action does not stop the rest of the batch.
+      operationId: syncPush
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushRequest"
+      responses:
+        200:
+          description: Result for every action in request order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /sync/pull:
+    get:
+      tags:
+        - sync
+      summary: Pull actions after a cursor
+      description: >
+        Returns accepted actions with seq greater than `after`, ordered by seq.
+        Includes the client's own actions; the client skips them by actionId.
+        Returns 410 when the cursor is too old; the client then loads /sync/snapshot.
+      operationId: syncPull
+      parameters:
+        - name: after
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        200:
+          description: Actions page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        410:
+          $ref: "#/components/responses/Gone"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /sync/snapshot:
+    get:
+      tags:
+        - sync
+      summary: Get full current state
+      description: >
+        Used on first sign-in, on a new device and after 410 from /sync/pull.
+        The client replaces local data and continues pulling from `cursor`.
+      operationId: syncSnapshot
+      responses:
+        200:
+          description: Current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snapshot"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /scan/code:
+    post:
+      tags:
+        - scan
+      summary: Recognize a product by QR or DataMatrix
+      description: >
+        The client decodes the code with the camera and sends the raw string.
+        The result only prefills the product form; saving goes through /sync/push.
+      operationId: scanCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanCodeRequest"
+      responses:
+        200:
+          description: Recognized product fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        422:
+          $ref: "#/components/responses/UnprocessableEntity"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /scan/photo:
+    post:
+      tags:
+        - scan
+      summary: Recognize a product by photo
+      description: >
+        Synchronous ML recognition of the name and dates from a label photo.
+        The result only prefills the product form; saving goes through /sync/push.
+      operationId: scanPhoto
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [ image ]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG or WebP, up to 5 MB
+            encoding:
+              image:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        200:
+          description: Recognized product fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+        422:
+          $ref: "#/components/responses/UnprocessableEntity"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /photos/upload-url:
+    post:
+      tags:
+        - photos
+      summary: Get a presigned URL to upload a photo
+      description: >
+        The client uploads the file directly to object storage with the returned
+        method, URL and headers, then sets `imageKey` on the product via /sync/push.
+      operationId: createPhotoUploadUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhotoUploadRequest"
+      responses:
+        200:
+          description: Presigned upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoUpload"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        413:
+          $ref: "#/components/responses/PayloadTooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
+  /photos/{key}/url:
+    get:
+      tags:
+        - photos
+      summary: Get a presigned URL to download a photo
+      description: >
+        Returned as JSON instead of a redirect because <img> cannot send the Bearer token.
+      operationId: getPhotoUrl
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Presigned download URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoUrl"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   schemas:
     Credentials:
@@ -278,6 +519,383 @@ components:
       type: string
       enum: [ yandex ]
 
+    ProductFields:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        category:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 1000
+        quantity:
+          type: string
+          maxLength: 50
+          example: 1 л
+        imageKey:
+          type: string
+        manufacturedAt:
+          type: string
+          format: date
+        expiresAt:
+          type: string
+          format: date
+        shelfLifeAfterOpening:
+          type: integer
+          minimum: 1
+          description: Days the product keeps after opening
+
+    Product:
+      allOf:
+        - $ref: "#/components/schemas/ProductFields"
+        - type: object
+          required: [ id, name, expiresAt, effectiveExpiresAt, createdAt, updatedAt ]
+          properties:
+            id:
+              type: string
+              format: uuid
+            openedAt:
+              type: string
+              format: date
+            effectiveExpiresAt:
+              type: string
+              format: date
+              description: min(expiresAt, openedAt + shelfLifeAfterOpening)
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    Settings:
+      type: object
+      required: [ hasNotifications, notificationTime, timezone ]
+      properties:
+        hasNotifications:
+          type: boolean
+        notificationTime:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          example: "09:00"
+        timezone:
+          type: string
+          description: IANA time zone
+          example: Europe/Moscow
+
+    Indicator:
+      type: object
+      required: [ color ]
+      properties:
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
+          example: "#FF0000"
+        maxDays:
+          type: integer
+          minimum: 0
+          description: Applies when days left <= maxDays; omitted for the fallback indicator
+
+    ActionType:
+      type: string
+      enum:
+        - product.created
+        - product.updated
+        - product.opened
+        - product.deleted
+        - settings.updated
+        - indicators.replaced
+
+    ActionMeta:
+      type: object
+      required: [ actionId, type, occurredAt ]
+      properties:
+        actionId:
+          type: string
+          format: uuid
+          description: Generated by the client, used for idempotency
+        type:
+          $ref: "#/components/schemas/ActionType"
+        occurredAt:
+          type: string
+          format: date-time
+          description: Client time when the action happened
+        seq:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Assigned by the server; present only in /sync/pull
+
+    Action:
+      oneOf:
+        - $ref: "#/components/schemas/ProductCreatedAction"
+        - $ref: "#/components/schemas/ProductUpdatedAction"
+        - $ref: "#/components/schemas/ProductOpenedAction"
+        - $ref: "#/components/schemas/ProductDeletedAction"
+        - $ref: "#/components/schemas/SettingsUpdatedAction"
+        - $ref: "#/components/schemas/IndicatorsReplacedAction"
+      discriminator:
+        propertyName: type
+        mapping:
+          product.created: "#/components/schemas/ProductCreatedAction"
+          product.updated: "#/components/schemas/ProductUpdatedAction"
+          product.opened: "#/components/schemas/ProductOpenedAction"
+          product.deleted: "#/components/schemas/ProductDeletedAction"
+          settings.updated: "#/components/schemas/SettingsUpdatedAction"
+          indicators.replaced: "#/components/schemas/IndicatorsReplacedAction"
+
+    ProductCreatedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              allOf:
+                - $ref: "#/components/schemas/ProductFields"
+                - type: object
+                  required: [ productId, name, expiresAt ]
+                  properties:
+                    productId:
+                      type: string
+                      format: uuid
+
+    ProductUpdatedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              type: object
+              required: [ productId, changes ]
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+                changes:
+                  description: Only changed fields; for the same field the later action wins
+                  allOf:
+                    - $ref: "#/components/schemas/ProductFields"
+
+    ProductOpenedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              type: object
+              required: [ productId, openedAt ]
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+                openedAt:
+                  type: string
+                  format: date
+
+    ProductDeletedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              type: object
+              required: [ productId ]
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+
+    SettingsUpdatedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              type: object
+              description: Only changed fields
+              properties:
+                hasNotifications:
+                  type: boolean
+                notificationTime:
+                  type: string
+                  pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                timezone:
+                  type: string
+
+    IndicatorsReplacedAction:
+      allOf:
+        - $ref: "#/components/schemas/ActionMeta"
+        - type: object
+          required: [ payload ]
+          properties:
+            payload:
+              type: object
+              required: [ indicators ]
+              properties:
+                indicators:
+                  type: array
+                  maxItems: 10
+                  items:
+                    $ref: "#/components/schemas/Indicator"
+
+    PushRequest:
+      type: object
+      required: [ actions ]
+      properties:
+        actions:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/Action"
+
+    PushResponse:
+      type: object
+      required: [ results ]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionResult"
+
+    ActionResult:
+      type: object
+      required: [ actionId, status ]
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ accepted, rejected ]
+        seq:
+          type: integer
+          format: int64
+          description: Present when accepted
+        reason:
+          type: string
+          enum: [ validation, not_found, unknown_type ]
+          description: Present when rejected
+        detail:
+          type: string
+
+    PullResponse:
+      type: object
+      required: [ actions, cursor, hasMore ]
+      properties:
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Action"
+        cursor:
+          type: integer
+          format: int64
+          description: Seq of the last returned action, or `after` if none
+        hasMore:
+          type: boolean
+
+    Snapshot:
+      type: object
+      required: [ cursor, products, settings, indicators ]
+      properties:
+        cursor:
+          type: integer
+          format: int64
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        settings:
+          $ref: "#/components/schemas/Settings"
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Indicator"
+
+    ScanCodeRequest:
+      type: object
+      required: [ format, raw ]
+      properties:
+        format:
+          type: string
+          enum: [ qr, datamatrix ]
+        raw:
+          type: string
+          minLength: 1
+          maxLength: 4096
+
+    ScanResult:
+      type: object
+      properties:
+        name:
+          type: string
+        manufacturedAt:
+          type: string
+          format: date
+        expiresAt:
+          type: string
+          format: date
+        gtin:
+          type: string
+          description: Present for codes that contain a GTIN
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Present for photo recognition
+
+    PhotoUploadRequest:
+      type: object
+      required: [ contentType, size ]
+      properties:
+        contentType:
+          type: string
+          enum: [ image/jpeg, image/png, image/webp ]
+        size:
+          type: integer
+          minimum: 1
+          maximum: 5242880
+
+    PhotoUpload:
+      type: object
+      required: [ key, uploadUrl, method, headers, expiresAt ]
+      properties:
+        key:
+          type: string
+        uploadUrl:
+          type: string
+          format: uri
+        method:
+          type: string
+          enum: [ PUT ]
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    PhotoUrl:
+      type: object
+      required: [ url, expiresAt ]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+
   parameters:
     OAuthProvider:
       name: provider
@@ -328,8 +946,44 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Resource belongs to another user
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     NotFound:
-      description: Unknown OAuth provider
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Gone:
+      description: Cursor is too old, load /sync/snapshot
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PayloadTooLarge:
+      description: Request or file is too large
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnsupportedMediaType:
+      description: Unsupported file type
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: Nothing was recognized
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ServiceUnavailable:
+      description: Recognition service is unavailable
       content:
         application/problem+json:
           schema:

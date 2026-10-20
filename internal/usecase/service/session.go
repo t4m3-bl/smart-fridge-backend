@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
-	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"smart-fridge-backend/pkg/crypto/sha256"
 	"time"
 )
 
-type UserRepository1 interface {
-	FindByID(ctx context.Context, id domain.ID) (*domain.User, error)
+//go:generate go run go.uber.org/mock/mockgen -source=session.go -destination=mocks/session_mock.go
+
+type UserFinder interface {
+	FindByID(ctx context.Context, id domain.UserID) (*domain.User, error)
 }
 
 type SessionRepository interface {
@@ -20,19 +21,27 @@ type SessionRepository interface {
 	Revoke(ctx context.Context, tokenHash string) error
 }
 
+type AccessTokenGenerator interface {
+	Generate(user *domain.User) (dto.Token, error)
+}
+
+type RefreshTokenGenerator interface {
+	Generate() dto.Token
+}
+
 type SessionService struct {
 	sessions SessionRepository
-	users    UserRepository1
+	users    UserFinder
 
-	access  *tokens.JWTTokenManager
-	refresh *tokens.RefreshTokenManager
+	access  AccessTokenGenerator
+	refresh RefreshTokenGenerator
 }
 
 func NewSessionService(
 	sessions SessionRepository,
-	users UserRepository1,
-	access *tokens.JWTTokenManager,
-	refresh *tokens.RefreshTokenManager,
+	users UserFinder,
+	access AccessTokenGenerator,
+	refresh RefreshTokenGenerator,
 ) *SessionService {
 	return &SessionService{
 		sessions: sessions,
@@ -42,37 +51,23 @@ func NewSessionService(
 	}
 }
 
-func (s *SessionService) Create(ctx context.Context, user *domain.User) (dto.TokenPair, error) {
-	refresh, err := s.refresh.Generate()
-	if err != nil {
-		return dto.TokenPair{}, err
-	}
-
-	access, err := s.access.Generate(user)
-	if err != nil {
-		return dto.TokenPair{}, fmt.Errorf("create session: %w", err)
-	}
+func (s *SessionService) Create(ctx context.Context, user *domain.User) (dto.Token, error) {
+	refresh := s.refresh.Generate()
 
 	session, err := domain.NewSession(user.ID, sha256.Hash(refresh.Body), refresh.TTL)
 	if err != nil {
-		return dto.TokenPair{}, fmt.Errorf("create session: %w", err)
+		return dto.Token{}, fmt.Errorf("create session: %w", err)
 	}
 
 	if err := s.sessions.Create(ctx, session); err != nil {
-		return dto.TokenPair{}, fmt.Errorf("create session: save: %w", err)
+		return dto.Token{}, fmt.Errorf("create session: save: %w", err)
 	}
 
-	return dto.TokenPair{
-		Refresh: refresh,
-		Access:  access,
-	}, nil
+	return refresh, nil
 }
 
 func (s *SessionService) Rotate(ctx context.Context, oldRefresh string) (dto.TokenPair, error) {
-	newRefresh, err := s.refresh.Generate()
-	if err != nil {
-		return dto.TokenPair{}, err
-	}
+	newRefresh := s.refresh.Generate()
 
 	newSession, err := s.sessions.Rotate(ctx,
 		sha256.Hash(oldRefresh),

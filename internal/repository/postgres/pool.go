@@ -2,19 +2,25 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
-	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/migrations"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 	"go.uber.org/fx"
 )
 
-func NewPool(cfg *config.Config) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.Database.URL)
+func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres dsn: %w", err)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
@@ -24,9 +30,20 @@ func NewPool(cfg *config.Config) (*pgxpool.Pool, error) {
 
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func(db *sql.DB) {
+		if err := db.Close(); err != nil {
+			slog.Warn("close migration db", "error", err)
+		}
+	}(db)
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	sessionLocker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return fmt.Errorf("create postgres session locker: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS,
+		goose.WithSessionLocker(sessionLocker),
+	)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
 	}

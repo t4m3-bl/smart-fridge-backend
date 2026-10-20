@@ -2,28 +2,27 @@ package domain
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Session struct {
-	ID               ID
-	UserID           ID
+	ID               SessionID
+	UserID           UserID
 	RefreshTokenHash string
 	ExpiresIn        time.Duration
 	CreatedAt        time.Time
 }
 
-func NewSession(userID ID, tokenHash string, expiresIn time.Duration) (*Session, error) {
-	id, err := NewID()
-	if err != nil {
-		return nil, err
-	}
+func NewSession(userID UserID, tokenHash string, expiresIn time.Duration) (*Session, error) {
+	id := uuid.Must(uuid.NewV7())
 
 	if tokenHash == "" {
 		return nil, NewValidationErr("token", "empty token")
 	}
 
 	return &Session{
-		ID:               id,
+		ID:               SessionID(id),
 		UserID:           userID,
 		RefreshTokenHash: tokenHash,
 		ExpiresIn:        expiresIn,
@@ -35,3 +34,5 @@ func (s *Session) IsExpired() bool {
 	now := time.Now().UTC()
 	return s.CreatedAt.Add(s.ExpiresIn).Before(now)
 }
+
+type SessionID uuid.UUID

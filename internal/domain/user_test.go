@@ -9,116 +9,113 @@ import (
 )
 
 func TestNewEmail(t *testing.T) {
-	type testCase struct {
-		name      string
-		raw       string
-		want      domain.Email
-		errString string
+	type args struct {
+		raw string
 	}
-
-	tests := []testCase{
+	tests := []struct {
+		name   string
+		args   args
+		want   domain.Email
+		errStr string
+	}{
 		{
-			name:      "valid email address",
-			raw:       "example@test.com",
-			want:      "example@test.com",
-			errString: "",
+			name: "valid email address",
+			args: args{raw: "example@test.com"},
+			want: "example@test.com",
 		},
 		{
-			name:      "empty string",
-			raw:       "",
-			errString: "email validation error: string is empty or longer than 254 characters",
+			name:   "empty string",
+			args:   args{raw: ""},
+			want:   "",
+			errStr: "email validation error: string is empty or longer than 254 characters",
 		},
 		{
-			name:      "string exceeds maximum length",
-			raw:       strings.Repeat("a", 255),
-			errString: "email validation error: string is empty or longer than 254 characters",
+			name:   "string exceeds maximum length",
+			args:   args{raw: strings.Repeat("a", 255)},
+			want:   "",
+			errStr: "email validation error: string is empty or longer than 254 characters",
 		},
 		{
-			name:      "missing dot in domain",
-			raw:       "example@test",
-			errString: "email validation error: string is not an email address",
+			name:   "missing dot in domain",
+			args:   args{raw: "example@test"},
+			want:   "",
+			errStr: "email validation error: string is not an email address",
 		},
 		{
-			name:      "missing at symbol",
-			raw:       "example.com",
-			errString: "email validation error: string is not an email address",
+			name:   "missing at symbol",
+			args:   args{raw: "example.com"},
+			want:   "",
+			errStr: "email validation error: string is not an email address",
 		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := domain.NewEmail(tt.args.raw)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			is := assert.New(t)
-
-			email, err := domain.NewEmail(tc.raw)
-			if tc.errString != "" && is.Error(err) {
-				is.Equal(tc.errString, err.Error())
-			} else {
-				is.NoError(err)
+			if tt.errStr == "" {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+				return
 			}
 
-			is.Equal(tc.want, email)
+			assert.ErrorContains(t, err, tt.errStr)
 		})
 	}
 }
 
 func TestNewUser(t *testing.T) {
 	type args struct {
-		email        string
-		passwordHash string
+		rawEmail string
+		pwHash   string
 	}
-
-	type testCase struct {
-		name      string
-		args      args
-		want      domain.User
-		errString string
-	}
-
-	tests := []testCase{
+	tests := []struct {
+		name   string
+		args   args
+		want   args
+		errStr string
+	}{
 		{
 			name: "successful user creation",
 			args: args{
-				email:        "example@test.com",
-				passwordHash: "good_secret",
+				rawEmail: "example@test.com",
+				pwHash:   "good_secret",
 			},
-			want: domain.User{
-				Email:        "example@test.com",
-				PasswordHash: "good_secret",
+			want: args{
+				rawEmail: "example@test.com",
+				pwHash:   "good_secret",
 			},
-			errString: "",
 		},
 		{
-			name: "failed - validation fails on any invalid email",
+			name: "validation fails on any invalid email",
 			args: args{
-				email:        "invalid-email-format",
-				passwordHash: "good_secret",
+				rawEmail: "invalid-email-format",
+				pwHash:   "good_secret",
 			},
-			errString: "email validation error: string is not an email address",
+			errStr: "email validation error: string is not an email address",
 		},
 		{
-			name: "failed - password hash is empty",
+			name: "password hash is empty",
 			args: args{
-				email:        "alex@fridge.com",
-				passwordHash: "",
+				rawEmail: "alex@fridge.com",
+				pwHash:   "",
 			},
-			errString: "password_hash validation error: empty",
+			errStr: "password_hash validation error: empty",
 		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := domain.NewUser(tt.args.rawEmail, tt.args.pwHash)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			is := assert.New(t)
-
-			user, err := domain.NewUser(tc.args.email, tc.args.passwordHash)
-			if tc.errString != "" && is.Error(err) {
-				is.Equal(tc.errString, err.Error())
-				is.Nil(user)
-			} else {
-				is.NoError(err)
-				is.NotEmpty(user.ID)
-				is.Equal(tc.want.Email, user.Email)
-				is.Equal(tc.want.PasswordHash, user.PasswordHash)
+			if tt.errStr != "" {
+				assert.ErrorContains(t, err, tt.errStr)
+				assert.Nil(t, got)
+				return
 			}
+
+			assert.Equal(t, tt.want, args{
+				rawEmail: string(got.Email),
+				pwHash:   got.PasswordHash,
+			})
 		})
 	}
 }

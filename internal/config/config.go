@@ -70,6 +70,7 @@ type Auth struct {
 	JWTSecret  string        `mapstructure:"jwt_secret"`
 	AccessTTL  time.Duration `mapstructure:"access_ttl"`
 	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
+	OAuthTTl   time.Duration `mapstructure:"oauth_ttl"`
 }
 
 type Argon2 struct {
@@ -78,6 +79,17 @@ type Argon2 struct {
 	Threads   uint8  `mapstructure:"threads"`
 	SaltLen   uint32 `mapstructure:"salt_len"`
 	KeyLen    uint32 `mapstructure:"key_len"`
+}
+
+type Providers struct {
+	RedirectURL string   `mapstructure:"redirect_url"`
+	Yandex      Provider `mapstructure:"yandex"`
+}
+
+type Provider struct {
+	ClientID     string   `mapstructure:"client_id"`
+	ClientSecret string   `mapstructure:"client_secret"`
+	Scopes       []string `mapstructure:"scopes"`
 }
 
 const (
@@ -152,6 +164,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Auth.RefreshTTL <= c.Auth.AccessTTL {
 		errs = append(errs, errors.New("auth.refresh_ttl must be greater than auth.access_ttl"))
+	}
+	if c.Auth.OAuthTTl <= 0 {
+		errs = append(errs, errors.New("auth.oauth_ttl must be positive"))
 	}
 
 	if c.Argon2.MemoryKiB == 0 || c.Argon2.Time == 0 || c.Argon2.Threads == 0 ||

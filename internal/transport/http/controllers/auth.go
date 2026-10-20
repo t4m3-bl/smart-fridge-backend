@@ -6,6 +6,8 @@ import (
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/cookie"
 	"smart-fridge-backend/internal/usecase/service"
+
+	"github.com/labstack/echo/v5"
 )
 
 type AuthController struct {
@@ -47,7 +49,9 @@ func (c *AuthController) SignUp(ctx context.Context, request api.SignUpRequestOb
 				TokenType:   "Bearer",
 			},
 			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: c.cookies.CreateRefreshTokenCookie(pair.Refresh),
+				SetCookie: []string{
+					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
+				},
 			},
 		},
 	}, nil
@@ -73,7 +77,9 @@ func (c *AuthController) SignIn(ctx context.Context, request api.SignInRequestOb
 				TokenType:   "Bearer",
 			},
 			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: c.cookies.CreateRefreshTokenCookie(pair.Refresh),
+				SetCookie: []string{
+					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
+				},
 			},
 		},
 	}, nil
@@ -95,7 +101,9 @@ func (c *AuthController) Refresh(ctx context.Context, request api.RefreshRequest
 				TokenType:   "Bearer",
 			},
 			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: c.cookies.CreateRefreshTokenCookie(pair.Refresh),
+				SetCookie: []string{
+					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
+				},
 			},
 		},
 	}, nil
@@ -110,7 +118,64 @@ func (c *AuthController) Logout(ctx context.Context, request api.LogoutRequestOb
 
 	return api.Logout204Response{
 		Headers: api.Logout204ResponseHeaders{
-			SetCookie: c.cookies.CreateEmptyRefreshTokenCookie(),
+			SetCookie: []string{
+				c.cookies.ClearCookie("refresh_token").String(),
+			},
+		},
+	}, nil
+}
+
+func (c *AuthController) OauthSignIn(_ context.Context, request api.OauthSignInRequestObject) (api.OauthSignInResponseObject, error) {
+	providerName := string(request.Provider)
+
+	output, err := c.auth.OauthSignIn(providerName)
+	if err != nil {
+		return nil, err
+	}
+
+	return api.OauthSignIn302Response{
+		Headers: api.OauthSignIn302ResponseHeaders{
+			Location: &output.URL,
+			SetCookie: []string{
+				c.cookies.CreateSecuredCookie("oauth_state", output.State, output.TTL).String(),
+				c.cookies.CreateSecuredCookie("oauth_verifier", output.Verifier, output.TTL).String(),
+			},
+		},
+	}, nil
+}
+
+func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCallbackRequestObject) (api.OauthCallbackResponseObject, error) {
+	provider := string(request.Provider)
+	p := request.Params
+
+	if p.State != p.OauthState {
+		return nil, echo.ErrBadRequest
+	}
+
+	if p.Error != nil && *p.Error != "" {
+		switch *p.Error {
+		case "access_denied":
+			return nil, echo.ErrForbidden
+		case "server_error":
+			return nil, echo.ErrBadGateway
+		}
+	}
+
+	refresh, err := c.auth.OauthCallback(ctx, dto.OAuthCallbackInput{
+		ProviderName: provider,
+		Code:         *p.Code,
+		Verifier:     p.OauthVerifier,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return api.OauthCallback302Response{
+		Headers: api.OauthCallback302ResponseHeaders{
+			Location: new("http://localhost:3000/"),
+			SetCookie: []string{
+				c.cookies.CreateRefreshTokenCookie(refresh).String(),
+			},
 		},
 	}, nil
 }

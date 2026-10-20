@@ -6,10 +6,11 @@ import (
 )
 
 var (
-	ErrNotFound           = errors.New("not found")
-	ErrAlreadyExists      = errors.New("already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidSession     = errors.New("invalid or expired session")
+	ErrNotFound            = errors.New("not found")
+	ErrAlreadyExists       = errors.New("already exists")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrInvalidSession      = errors.New("invalid or expired session")
+	ErrUnprocessableEntity = errors.New("unprocessable entity")
 )
 
 type ValidationErr struct {

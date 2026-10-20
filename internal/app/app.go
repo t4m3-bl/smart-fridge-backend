@@ -1,10 +1,11 @@
 package app
 
 import (
+	"context"
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/repository/postgres"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
-	httpserver "smart-fridge-backend/internal/transport/http"
+	http2 "smart-fridge-backend/internal/transport/http"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/cookie"
@@ -13,6 +14,7 @@ import (
 	"smart-fridge-backend/pkg/crypto/argon2id"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 )
 
@@ -30,7 +32,7 @@ func New(cfg *config.Config) *fx.App {
 var infrastructure = fx.Module("infrastructure",
 	fx.Provide(
 		newPasswordHasher,
-		fx.Annotate(postgres.NewPool,
+		fx.Annotate(newPool,
 			fx.As(fx.Self()),
 			fx.As(new(sqlc.DBTX)),
 			fx.As(new(postgres.TxDB)),
@@ -38,7 +40,7 @@ var infrastructure = fx.Module("infrastructure",
 
 		fx.Annotate(postgres.NewUserRepository,
 			fx.As(new(service.UserRepository)),
-			fx.As(new(service.UserRepository1)),
+			fx.As(new(service.UserFinder)),
 		),
 		fx.Annotate(postgres.NewSessionRepository,
 			fx.As(new(service.SessionRepository)),
@@ -49,9 +51,9 @@ var infrastructure = fx.Module("infrastructure",
 
 var usecases = fx.Module("usecases",
 	fx.Provide(
-		newAccessTokenManager,
-		newRefreshTokenManager,
-		service.NewSessionService,
+		fx.Annotate(newAccessTokenManager, fx.As(new(service.AccessTokenGenerator))),
+		fx.Annotate(newRefreshTokenManager, fx.As(new(service.RefreshTokenGenerator))),
+		fx.Annotate(service.NewSessionService, fx.As(new(service.SessionCreator))),
 		service.NewAuthService,
 	),
 )
@@ -60,10 +62,10 @@ var transport = fx.Module("transport",
 	fx.Provide(
 		newCookieFactory,
 		controllers.NewAuthController,
-		fx.Annotate(httpserver.NewHandler, fx.As(new(api.StrictServerInterface))),
-		httpserver.NewServer,
+		fx.Annotate(http2.NewHandler, fx.As(new(api.StrictServerInterface))),
+		http2.NewServer,
 	),
-	fx.Invoke(httpserver.RegisterLifecycle),
+	fx.Invoke(http2.RegisterLifecycle),
 )
 
 func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
@@ -76,11 +78,15 @@ func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
 	})
 }
 
-func newAccessTokenManager(cfg *config.Config) *tokens.JWTTokenManager {
+func newPool(cfg *config.Config) (*pgxpool.Pool, error) {
+	return postgres.NewPool(context.Background(), cfg.Database.URL)
+}
+
+func newAccessTokenManager(cfg *config.Config) (*tokens.JWTTokenManager, error) {
 	return tokens.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL)
 }
 
-func newRefreshTokenManager(cfg *config.Config) *tokens.RefreshTokenManager {
+func newRefreshTokenManager(cfg *config.Config) (*tokens.RefreshTokenManager, error) {
 	return tokens.NewRefreshTokenManager(cfg.Auth.RefreshTTL)
 }
 

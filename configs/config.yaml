@@ -10,6 +10,7 @@ http:
 auth:
   access_ttl: 15m
   refresh_ttl: 720h
+  oauth_ttl: 10m
 
 argon2:
   memory_kib: 65536

@@ -11,20 +11,18 @@ import (
 
 func TestNewSession(t *testing.T) {
 	type args struct {
-		userID    domain.ID
+		userID    domain.UserID
 		tokenHash string
 		expiresIn time.Duration
 	}
+	baseID := domain.UserID(uuid.New())
 
-	type testCase struct {
-		name      string
-		args      args
-		errString string
-	}
-
-	baseID := domain.ID(uuid.New())
-
-	tests := []testCase{
+	tests := []struct {
+		name   string
+		args   args
+		want   args
+		errStr string
+	}{
 		{
 			name: "successful session creation",
 			args: args{
@@ -32,7 +30,11 @@ func TestNewSession(t *testing.T) {
 				tokenHash: "valid_refresh_token_hash",
 				expiresIn: time.Hour,
 			},
-			errString: "",
+			want: args{
+				userID:    baseID,
+				tokenHash: "valid_refresh_token_hash",
+				expiresIn: time.Hour,
+			},
 		},
 		{
 			name: "empty token hash",
@@ -41,46 +43,62 @@ func TestNewSession(t *testing.T) {
 				tokenHash: "",
 				expiresIn: time.Hour,
 			},
-			errString: "token validation error: empty token",
+			errStr: "token validation error: empty token",
 		},
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			is := assert.New(t)
-
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			now := time.Now().UTC()
-			got, err := domain.NewSession(tc.args.userID, tc.args.tokenHash, tc.args.expiresIn)
 
-			if tc.errString != "" {
-				if is.Error(err) {
-					is.Equal(tc.errString, err.Error())
-				}
-				is.Nil(got)
+			got, err := domain.NewSession(tt.args.userID, tt.args.tokenHash, tt.args.expiresIn)
+
+			if tt.errStr != "" {
+				assert.ErrorContains(t, err, tt.errStr)
+				assert.Nil(t, got)
 				return
 			}
 
-			is.NoError(err)
-			if is.NotNil(got) {
-				is.NotEmpty(got.ID)
-				is.Equal(tc.args.userID, got.UserID)
-				is.Equal(tc.args.tokenHash, got.RefreshTokenHash)
-				is.Equal(tc.args.expiresIn, got.ExpiresIn)
-				is.WithinDuration(now, got.CreatedAt, time.Second)
-			}
+			assert.NoError(t, err)
+			assert.NotNil(t, got)
+			assert.NotEmpty(t, got.ID)
+			assert.Equal(t, tt.want, args{
+				userID:    got.UserID,
+				tokenHash: got.RefreshTokenHash,
+				expiresIn: got.ExpiresIn,
+			})
+			assert.WithinDuration(t, now, got.CreatedAt, time.Second)
 		})
 	}
 }
 
 func TestSession_IsExpired(t *testing.T) {
-	is := assert.New(t)
-	userID := domain.ID(uuid.New())
+	type args struct {
+		expiresIn time.Duration
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "active session",
+			args: args{expiresIn: time.Hour},
+			want: false,
+		},
+		{
+			name: "expired session",
+			args: args{expiresIn: -time.Minute},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userID := domain.UserID(uuid.New())
 
-	activeSession, err := domain.NewSession(userID, "hash", time.Hour)
-	is.NoError(err)
-	is.False(activeSession.IsExpired())
+			session, err := domain.NewSession(userID, "hash", tt.args.expiresIn)
 
-	expiredSession, err := domain.NewSession(userID, "hash", -time.Minute)
-	is.NoError(err)
-	is.True(expiredSession.IsExpired())
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, session.IsExpired())
+		})
+	}
 }

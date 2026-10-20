@@ -4,44 +4,81 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-// User represents an application user in the domain.
-//
-// Each field is a value object with its own validation rules. Use NewUser to
-// create a User with a generated ID and validated email and password hash.
 type User struct {
-	ID           ID
-	Email        Email
-	PasswordHash string
+	ID         UserID
+	Email      Email
+	Identities []Identity
 }
 
-func NewUser(rawEmail, pwHash string) (*User, error) {
+func NewUser(rawEmail string) (*User, error) {
+	id := uuid.Must(uuid.NewV7())
+
 	email, err := NewEmail(rawEmail)
 	if err != nil {
 		return nil, err
 	}
 
-	if pwHash == "" {
-		return nil, NewValidationErr("password_hash", "empty")
-	}
-
-	id, err := NewID()
-	if err != nil {
-		return nil, err
-	}
-
 	return &User{
-		ID:           id,
-		Email:        email,
-		PasswordHash: pwHash,
+		ID:         UserID(id),
+		Email:      email,
+		Identities: make([]Identity, 0),
 	}, nil
 }
 
-// Email is a validated, normalized email address.
-//
-// Email values are trimmed and lowercased. The zero value is invalid; create valid
-// values with NewEmail.
+func (u *User) HasIndentity(p Provider) bool {
+	for _, identity := range u.Identities {
+		if p == identity.Provider {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (u *User) AddNativeIdentity(passwordHash string) error {
+	if u.HasIndentity(ProviderNative) {
+		return ErrAlreadyExists
+	}
+
+	identity, err := NewNativeIdentity(u.ID, passwordHash)
+	if err != nil {
+		return err
+	}
+
+	u.Identities = append(u.Identities, *identity)
+	return nil
+}
+
+func (u *User) AddExternalIdentity(p Provider, providerUserID string) error {
+	if u.HasIndentity(p) {
+		return ErrAlreadyExists
+	}
+
+	identity, err := NewExternalIdentity(u.ID, p, providerUserID)
+	if err != nil {
+		return err
+	}
+
+	u.Identities = append(u.Identities, *identity)
+	return nil
+}
+
+func (u *User) GetPasswordHash() (string, error) {
+	for _, identity := range u.Identities {
+		if identity.Provider == ProviderNative {
+			return *identity.PasswordHash, nil
+		}
+	}
+
+	return "", ErrUnprocessableEntity
+}
+
+type UserID uuid.UUID
+
 type Email string
 
 const MaxEmailLen = 254

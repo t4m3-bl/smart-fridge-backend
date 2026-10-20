@@ -1,10 +1,9 @@
 package tokens
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"smart-fridge-backend/internal/dto"
+	"smart-fridge-backend/pkg/auth/token"
 	"time"
 )
 
@@ -12,19 +11,18 @@ type RefreshTokenManager struct {
 	ttl time.Duration
 }
 
-func NewRefreshTokenManager(ttl time.Duration) *RefreshTokenManager {
-	return &RefreshTokenManager{ttl: ttl}
-}
-
-func (m *RefreshTokenManager) Generate() (dto.Token, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return dto.Token{}, fmt.Errorf("error generating refresh token: %w", err)
+func NewRefreshTokenManager(ttl time.Duration) (*RefreshTokenManager, error) {
+	if ttl <= 0 {
+		return nil, fmt.Errorf("refresh token manager: ttl must be positive, got %v", ttl)
 	}
 
-	raw := base64.RawURLEncoding.EncodeToString(b)
+	return &RefreshTokenManager{ttl: ttl}, nil
+}
+
+func (m *RefreshTokenManager) Generate() dto.Token {
+	raw := token.GenerateNonce(32)
 	return dto.Token{
 		Body: raw,
 		TTL:  m.ttl,
-	}, nil
+	}
 }

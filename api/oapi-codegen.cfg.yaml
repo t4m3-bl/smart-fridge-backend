@@ -6,3 +6,8 @@ generate:
   models: true
   embedded-spec: true
 output: api.gen.go
+
+output-options:
+  user-templates:
+    strict/strict-interface.tmpl: ../../../../api/templates/strict/strict-interface.tmpl
+    strict/strict-responses.tmpl: ../../../../api/templates/strict/strict-responses.tmpl

@@ -20,28 +20,37 @@ type JWTTokenManager struct {
 	ttl    time.Duration
 }
 
-func NewTokenManager(secret string, ttl time.Duration) *JWTTokenManager {
+func NewTokenManager(secret string, ttl time.Duration) (*JWTTokenManager, error) {
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("jwt token manager: secret must be at least 32 bytes, got %d", len(secret))
+	}
+	if ttl <= 0 {
+		return nil, fmt.Errorf("jwt token manager: ttl must be positive, got %v", ttl)
+	}
 	return &JWTTokenManager{
 		secret: []byte(secret),
 		ttl:    ttl,
-	}
+	}, nil
 }
 
 type Claims struct {
-	UserID domain.ID    `json:"uid"`
-	Email  domain.Email `json:"email"`
+	UserID domain.UserID `json:"uid"`
+	Email  domain.Email  `json:"email"`
 	jwt.RegisteredClaims
 }
 
 func (m *JWTTokenManager) Generate(user *domain.User) (dto.Token, error) {
-	now := time.Now().UTC()
+	if user == nil {
+		return dto.Token{}, fmt.Errorf("generate jwt token: user is nil")
+	}
 
+	now := time.Now().UTC()
 	claims := Claims{
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
-			Subject:   user.ID.String(),
+			Subject:   uuid.UUID(user.ID).String(),
 			Audience:  jwt.ClaimStrings{audienceClaim},
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),

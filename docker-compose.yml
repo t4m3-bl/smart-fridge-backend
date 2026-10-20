@@ -16,5 +16,17 @@ services:
       timeout: 3s
       retries: 10
 
+  migrations:
+    image: kukymbr/goose-docker:3.27.2
+    environment:
+      - GOOSE_DRIVER=postgres
+      - GOOSE_DBSTRING=host=postgres port=5432 user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB}
+    volumes:
+      - ./migrations:/migrations
+    command: -dir /migrations status
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres-data:

@@ -13,3 +13,9 @@ type Token struct {
 	Body string
 	TTL  time.Duration
 }
+
+type OAuthTokenPair struct {
+	Verifier string
+	State    string
+	TTL      time.Duration
+}

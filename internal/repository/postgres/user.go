@@ -10,21 +10,36 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserRepository struct {
-	q *sqlc.Queries
+	pool *pgxpool.Pool
+	q    *sqlc.Queries
 }
 
-func NewUserRepository(db sqlc.DBTX) *UserRepository {
-	return &UserRepository{q: sqlc.New(db)}
+func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
+	return &UserRepository{
+		pool: pool,
+		q:    sqlc.New(pool),
+	}
 }
 
 func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
-	if err := r.q.CreateUser(ctx, sqlc.CreateUserParams{
-		ID:           uuid.UUID(user.ID),
-		Email:        string(user.Email),
-		PasswordHash: &user.PasswordHash,
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// --- TRANSACTION ---
+	qtx := r.q.WithTx(tx)
+
+	if err := qtx.CreateUser(ctx, sqlc.CreateUserParams{
+		ID:    uuid.UUID(user.ID),
+		Email: string(user.Email),
 	}); err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 			return fmt.Errorf("create user: %w", domain.ErrAlreadyExists)
@@ -32,11 +47,30 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		return fmt.Errorf("create user: %w", err)
 	}
 
+	for _, identity := range user.Identities {
+		if err := qtx.CreateIdentity(ctx, sqlc.CreateIdentityParams{
+			ID:             uuid.UUID(identity.IdentityID),
+			UserID:         uuid.UUID(user.ID),
+			Provider:       identity.Provider.String(),
+			ProviderUserID: identity.ProviderUserID,
+			PasswordHash:   identity.PasswordHash,
+		}); err != nil {
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
+				return fmt.Errorf("add identity: %w", domain.ErrAlreadyExists)
+			}
+			return fmt.Errorf("add identity: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
 	return nil
 }
 
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	row, err := r.q.GetUserByEmail(ctx, email)
+func (r *UserRepository) FindByEmail(ctx context.Context, email domain.Email) (*domain.User, error) {
+	row, err := r.q.GetUserByEmail(ctx, string(email))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("find user by email: %w", domain.ErrNotFound)
@@ -44,10 +78,13 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
 
-	return toDomainUser(row.ID, row.Email, row.PasswordHash), nil
+	return &domain.User{
+		ID:    domain.UserID(row.ID),
+		Email: email,
+	}, nil
 }
 
-func (r *UserRepository) FindByID(ctx context.Context, id domain.ID) (*domain.User, error) {
+func (r *UserRepository) FindByID(ctx context.Context, id domain.UserID) (*domain.User, error) {
 	row, err := r.q.GetUserByID(ctx, uuid.UUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -56,17 +93,26 @@ func (r *UserRepository) FindByID(ctx context.Context, id domain.ID) (*domain.Us
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
 
-	return toDomainUser(row.ID, row.Email, row.PasswordHash), nil
+	return &domain.User{
+		ID:    id,
+		Email: domain.Email(row.Email),
+	}, nil
 }
 
-func toDomainUser(id uuid.UUID, email string, passwordHash *string) *domain.User {
-	user := &domain.User{
-		ID:    domain.ID(id),
-		Email: domain.Email(email),
-	}
-	if passwordHash != nil {
-		user.PasswordHash = *passwordHash
+func (r *UserRepository) FindByIdentity(ctx context.Context, provider domain.Provider, uid string) (*domain.User, error) {
+	row, err := r.q.GetUserByIdentity(ctx, sqlc.GetUserByIdentityParams{
+		Provider:       provider.String(),
+		ProviderUserID: &uid,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("find user by identity: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("find user by identity: %w", err)
 	}
 
-	return user
+	return &domain.User{
+		ID:    domain.UserID(row.ID),
+		Email: domain.Email(row.Email),
+	}, nil
 }

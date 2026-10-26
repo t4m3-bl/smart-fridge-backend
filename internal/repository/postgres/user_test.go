@@ -4,13 +4,13 @@ package postgres_test
 
 import (
 	"context"
+	"smart-fridge-backend/internal/domain"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"smart-fridge-backend/internal/domain"
 	db "smart-fridge-backend/internal/repository/postgres"
 )
 
@@ -45,8 +45,9 @@ func TestUserRepository_Create(t *testing.T) {
 		{
 			name: "duplicate email",
 			prepare: func(t *testing.T) *domain.User {
-				existing := seedUser(t)
+				t.Helper()
 
+				existing := seedUser(t)
 				user := newUser()
 				user.Email = existing.Email
 
@@ -57,8 +58,9 @@ func TestUserRepository_Create(t *testing.T) {
 		{
 			name: "duplicate user id",
 			prepare: func(t *testing.T) *domain.User {
-				existing := seedUser(t)
+				t.Helper()
 
+				existing := seedUser(t)
 				user := newUser()
 				user.ID = existing.ID
 
@@ -69,6 +71,8 @@ func TestUserRepository_Create(t *testing.T) {
 		{
 			name: "duplicate external identity",
 			prepare: func(t *testing.T) *domain.User {
+				t.Helper()
+
 				providerUserID := uuid.NewString()
 				seedUser(t, yandexIdentity(providerUserID))
 

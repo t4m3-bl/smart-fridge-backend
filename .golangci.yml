@@ -6,17 +6,6 @@ run:
   build-tags:
     - integration
 
-formatters:
-  enable:
-    - gofumpt
-    - goimports
-  settings:
-    gofumpt:
-      module-path: smart-fridge-backend
-    goimports:
-      local-prefixes:
-        - smart-fridge-backend
-
 linters:
   default: none
   enable:
@@ -34,7 +23,7 @@ linters:
     - contextcheck
     - noctx
     - fatcontext
-      
+
     # --- database and resources ---
     - sqlclosecheck
     - rowserrcheck
@@ -69,4 +58,36 @@ linters:
     - usetesting
 
     # --- architecture ---
-    - depguard
+    #- depguard
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+    cyclop:
+      max-complexity: 15
+
+  exclusions:
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - gochecknoglobals
+      - path: 'internal/app/.*'
+        linters:
+          - gochecknoglobals
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+        clothe-returns: true
+    goimports:
+      local-prefixes:
+        - smart-fridge-backend

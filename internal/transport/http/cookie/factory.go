@@ -20,6 +20,7 @@ func NewFactory(secure bool) *Factory {
 }
 
 func (f *Factory) CreateRefreshTokenCookie(value string, ttl time.Duration) *http.Cookie {
+	// #nosec G124
 	return &http.Cookie{
 		Name:     RefreshTokenCookieName,
 		Value:    value,
@@ -32,6 +33,7 @@ func (f *Factory) CreateRefreshTokenCookie(value string, ttl time.Duration) *htt
 }
 
 func (f *Factory) CreateOAuthStateCookie(value string, ttl time.Duration) *http.Cookie {
+	// #nosec G124
 	return &http.Cookie{
 		Name:     OAuthStateCookieName,
 		Value:    value,
@@ -44,6 +46,7 @@ func (f *Factory) CreateOAuthStateCookie(value string, ttl time.Duration) *http.
 }
 
 func (f *Factory) CreateOAuthVerifierCookie(value string, ttl time.Duration) *http.Cookie {
+	// #nosec G124
 	return &http.Cookie{
 		Name:     OAuthVerifierCookieName,
 		Value:    value,
@@ -56,6 +59,7 @@ func (f *Factory) CreateOAuthVerifierCookie(value string, ttl time.Duration) *ht
 }
 
 func (f *Factory) ClearCookie(name string) *http.Cookie {
+	// #nosec G124
 	return &http.Cookie{
 		Name:     name,
 		Value:    "",

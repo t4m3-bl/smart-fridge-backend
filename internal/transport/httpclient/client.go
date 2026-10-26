@@ -45,7 +45,7 @@ func createRequest(ctx context.Context, url, token string) (*http.Request, error
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("OAuth %s", token))
+	req.Header.Set("Authorization", "OAuth "+token)
 
 	return req, nil
 }

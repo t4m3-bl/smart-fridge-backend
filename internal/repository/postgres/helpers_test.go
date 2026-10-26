@@ -4,7 +4,7 @@ package postgres_test
 
 import (
 	"context"
-	"fmt"
+	"smart-fridge-backend/internal/domain"
 	"strings"
 	"testing"
 
@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"smart-fridge-backend/internal/domain"
 	db "smart-fridge-backend/internal/repository/postgres"
 )
 
@@ -88,7 +87,7 @@ func newUser(identities ...domain.Identity) *domain.User {
 
 	return &domain.User{
 		ID:         id,
-		Email:      domain.Email(fmt.Sprintf("%s@example.com", uuid.NewString())),
+		Email:      domain.Email(uuid.NewString() + "@example.com"),
 		Identities: identities,
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/repository/postgres"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
-	httpserver "smart-fridge-backend/internal/transport/http"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/cookie"
@@ -13,6 +12,8 @@ import (
 	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"smart-fridge-backend/internal/usecase/service"
 	"smart-fridge-backend/pkg/crypto/argon2id"
+
+	httpserver "smart-fridge-backend/internal/transport/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"

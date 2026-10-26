@@ -15,18 +15,18 @@ var (
 	ErrProviderUnavailable = errors.New("provider_unavailable")
 )
 
-type ValidationErr struct {
+type ValidationError struct {
 	field  string
 	reason string
 }
 
-func NewValidationErr(field, reason string) ValidationErr {
-	return ValidationErr{
+func NewValidationErr(field, reason string) ValidationError {
+	return ValidationError{
 		field:  field,
 		reason: reason,
 	}
 }
 
-func (e ValidationErr) Error() string {
+func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s validation error: %s", e.field, e.reason)
 }

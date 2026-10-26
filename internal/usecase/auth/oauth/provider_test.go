@@ -1,13 +1,12 @@
 package oauth_test
 
 import (
+	"smart-fridge-backend/internal/config"
+	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/usecase/auth/oauth"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"smart-fridge-backend/internal/config"
-	"smart-fridge-backend/internal/domain"
 )
 
 func TestNew_Use(t *testing.T) {

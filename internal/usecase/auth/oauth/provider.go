@@ -15,7 +15,7 @@ const httpTimeout = 10 * time.Second
 
 type Provider interface {
 	AuthCodeURL(state, verifier string) string
-	Exchange(ctx context.Context, code string, verifier string) (dto.OAuthIdentity, error)
+	Exchange(ctx context.Context, code, verifier string) (dto.OAuthIdentity, error)
 }
 
 type BaseProvider struct {

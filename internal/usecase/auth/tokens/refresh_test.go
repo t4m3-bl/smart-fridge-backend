@@ -1,13 +1,12 @@
 package tokens_test
 
 import (
+	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"smart-fridge-backend/internal/usecase/auth/tokens"
 )
 
 func TestNewRefreshTokenManager(t *testing.T) {

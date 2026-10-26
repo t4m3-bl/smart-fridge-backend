@@ -10,11 +10,11 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /smart-fridge-backend ./cmd/smart-fridge-backend
-RUN CGO_ENABLED=0 GOBIN=/go/bin go install github.com/pressly/goose/v3/cmd/goose@v3.29.0
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /smart-fridge-backend ./cmd/smart-fridge-backend && \
+    CGO_ENABLED=0 GOBIN=/go/bin go install github.com/pressly/goose/v3/cmd/goose@v3.29.0
 
 # Runtime stage
-FROM gcr.io/distroless/static-debian13 AS build-release-stage
+FROM gcr.io/distroless/static-debian13:latest-amd64 AS build-release-stage
 
 WORKDIR /app
 

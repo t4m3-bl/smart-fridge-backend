@@ -72,6 +72,8 @@ func ToProvider(name string) (Provider, error) {
 
 func (p Provider) String() string {
 	switch p {
+	case ProviderUnknown:
+		return "unknown"
 	case ProviderNative:
 		return "native"
 	case ProviderYandex:

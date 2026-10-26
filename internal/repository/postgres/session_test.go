@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"smart-fridge-backend/internal/domain"
 	"sync"
 	"testing"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"smart-fridge-backend/internal/domain"
 	db "smart-fridge-backend/internal/repository/postgres"
 )
 
@@ -40,10 +40,10 @@ func findSession(t *testing.T, refreshTokenHash string) *sessionRow {
 	return &row
 }
 
-func newSession(t *testing.T, userID domain.UserID, expiresIn time.Duration) *domain.Session {
+func newSession(t *testing.T, userID domain.UserID) *domain.Session {
 	t.Helper()
 
-	session, err := domain.NewSession(userID, "refresh-"+uuid.NewString(), expiresIn)
+	session, err := domain.NewSession(userID, "refresh-"+uuid.NewString(), time.Hour)
 	require.NoError(t, err)
 
 	return session
@@ -52,7 +52,7 @@ func newSession(t *testing.T, userID domain.UserID, expiresIn time.Duration) *do
 func seedSession(t *testing.T, repo *db.SessionRepository, userID domain.UserID) *domain.Session {
 	t.Helper()
 
-	session := newSession(t, userID, time.Hour)
+	session := newSession(t, userID)
 	require.NoError(t, repo.Create(context.Background(), session))
 
 	return session
@@ -69,22 +69,25 @@ func TestSessionRepository_Create(t *testing.T) {
 		{
 			name: "valid session",
 			prepare: func(t *testing.T, _ *db.SessionRepository, userID domain.UserID) *domain.Session {
-				return newSession(t, userID, time.Hour)
+				t.Helper()
+				return newSession(t, userID)
 			},
 			wantErr: require.NoError,
 		},
 		{
 			name: "user does not exist",
 			prepare: func(t *testing.T, _ *db.SessionRepository, _ domain.UserID) *domain.Session {
-				return newSession(t, domain.UserID(newUUID()), time.Hour)
+				t.Helper()
+				return newSession(t, domain.UserID(newUUID()))
 			},
 			wantErr: require.Error,
 		},
 		{
 			name: "duplicate session id",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) *domain.Session {
-				existing := seedSession(t, repo, userID)
+				t.Helper()
 
+				existing := seedSession(t, repo, userID)
 				duplicate := *existing
 				duplicate.RefreshTokenHash = "refresh-" + uuid.NewString()
 
@@ -133,6 +136,7 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "active session",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
 				return seedSession(t, repo, userID).RefreshTokenHash
 			},
 			expiresIn: expiresIn,
@@ -141,6 +145,7 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "unknown token",
 			prepare: func(*testing.T, *db.SessionRepository, domain.UserID) string {
+				t.Helper()
 				return "missing-" + uuid.NewString()
 			},
 			expiresIn: expiresIn,
@@ -149,6 +154,8 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "already revoked session",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
+
 				session := seedSession(t, repo, userID)
 				require.NoError(t, repo.Revoke(context.Background(), session.RefreshTokenHash))
 
@@ -160,7 +167,9 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "expired session",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
-				session := newSession(t, userID, time.Hour)
+				t.Helper()
+
+				session := newSession(t, userID)
 				session.CreatedAt = time.Now().Add(-2 * time.Hour)
 				require.NoError(t, repo.Create(context.Background(), session))
 
@@ -172,6 +181,8 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "replayed token",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
+
 				session := seedSession(t, repo, userID)
 				_, err := repo.Rotate(context.Background(), session.RefreshTokenHash, "first-"+uuid.NewString(), expiresIn)
 				require.NoError(t, err)
@@ -184,6 +195,7 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "invalid new session leaves old session untouched",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
 				return seedSession(t, repo, userID).RefreshTokenHash
 			},
 			expiresIn: -time.Minute,
@@ -192,6 +204,7 @@ func TestSessionRepository_Rotate(t *testing.T) {
 		{
 			name: "canceled context",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
 				return seedSession(t, repo, userID).RefreshTokenHash
 			},
 			expiresIn:   expiresIn,
@@ -289,6 +302,7 @@ func TestSessionRepository_Revoke(t *testing.T) {
 		{
 			name: "active session",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
 				return seedSession(t, repo, userID).RefreshTokenHash
 			},
 			wantErr: require.NoError,
@@ -296,6 +310,7 @@ func TestSessionRepository_Revoke(t *testing.T) {
 		{
 			name: "unknown token is not an error",
 			prepare: func(*testing.T, *db.SessionRepository, domain.UserID) string {
+				t.Helper()
 				return "missing-" + uuid.NewString()
 			},
 			wantErr: require.NoError,
@@ -303,6 +318,8 @@ func TestSessionRepository_Revoke(t *testing.T) {
 		{
 			name: "already revoked session",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
+
 				session := seedSession(t, repo, userID)
 				require.NoError(t, repo.Revoke(context.Background(), session.RefreshTokenHash))
 
@@ -313,6 +330,7 @@ func TestSessionRepository_Revoke(t *testing.T) {
 		{
 			name: "canceled context",
 			prepare: func(t *testing.T, repo *db.SessionRepository, userID domain.UserID) string {
+				t.Helper()
 				return seedSession(t, repo, userID).RefreshTokenHash
 			},
 			canceledCtx: true,
@@ -363,7 +381,7 @@ func TestSessionRepository_ClosedPool(t *testing.T) {
 
 	ctx := context.Background()
 	repo := db.NewSessionRepository(closedPool(t))
-	session := newSession(t, domain.UserID(newUUID()), time.Hour)
+	session := newSession(t, domain.UserID(newUUID()))
 
 	tests := []struct {
 		name string

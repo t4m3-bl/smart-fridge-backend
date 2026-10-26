@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"smart-fridge-backend/internal/config"
+	"smart-fridge-backend/internal/domain"
+	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/usecase/auth/oauth"
 	"strings"
 	"sync/atomic"
@@ -15,10 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/yandex"
-
-	"smart-fridge-backend/internal/config"
-	"smart-fridge-backend/internal/domain"
-	"smart-fridge-backend/internal/dto"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

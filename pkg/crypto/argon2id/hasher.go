@@ -73,6 +73,7 @@ func (h Hasher) Compare(hash, plain string) error {
 		return ErrInvalidHash
 	}
 
+	// #nosec G115
 	got := argon2.IDKey([]byte(plain), salt, p.Time, p.Memory, p.Threads, uint32(len(want)))
 	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return ErrMismatch

@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -70,6 +71,7 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 	}, nil
 }
 
+//nolint:contextcheck
 func (s *Server) Start(ctx context.Context, onFatal func(error)) error {
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", s.address)
 	if err != nil {
@@ -109,7 +111,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-s.done:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("http server: shutdown did not finish in time")
+		return errors.New("http server: shutdown did not finish in time")
 	}
 }
 

@@ -128,6 +128,8 @@ func TestNewNativeIdentity(t *testing.T) {
 }
 
 func compareIdentities(t *testing.T, got, want domain.Identity) {
+	t.Helper()
+
 	assert.Equal(t, want.Provider, got.Provider)
 	assert.Equal(t, want.UserID, got.UserID)
 	assert.Equal(t, want.PasswordHash, got.PasswordHash)

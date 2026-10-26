@@ -22,7 +22,7 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		Message: "internal server error",
 	}
 
-	if vErr, ok := errors.AsType[domain.ValidationErr](err); ok {
+	if vErr, ok := errors.AsType[domain.ValidationError](err); ok {
 		status = http.StatusBadRequest
 		problem.Code = "validation_error"
 		problem.Message = vErr.Error()

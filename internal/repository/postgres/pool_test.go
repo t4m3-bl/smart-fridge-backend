@@ -87,6 +87,8 @@ func TestMigrate(t *testing.T) {
 		{
 			name: "repeated run is idempotent",
 			pool: func(t *testing.T) *pgxpool.Pool {
+				t.Helper()
+
 				pool := newEmptyDatabasePool(t)
 				require.NoError(t, db.Migrate(context.Background(), pool))
 				return pool

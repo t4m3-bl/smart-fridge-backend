@@ -6,9 +6,9 @@ import (
 	"context"
 	"log"
 	"os"
-	db "smart-fridge-backend/internal/repository/postgres"
-
 	"testing"
+
+	db "smart-fridge-backend/internal/repository/postgres"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"

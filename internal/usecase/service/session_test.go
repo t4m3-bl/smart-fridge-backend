@@ -6,10 +6,11 @@ import (
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/usecase/service"
-	mockservice "smart-fridge-backend/internal/usecase/service/mocks"
 	"smart-fridge-backend/pkg/crypto/sha256"
 	"testing"
 	"time"
+
+	mockservice "smart-fridge-backend/internal/usecase/service/mocks"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -42,7 +43,8 @@ func TestSessionService_Create(t *testing.T) {
 						assert.Equal(t, sha256.Hash(refreshToken.Body), s.RefreshTokenHash)
 						assert.Equal(t, refreshToken.TTL, s.ExpiresIn)
 						return nil
-					})
+					},
+				)
 			},
 			want: refreshToken,
 		},

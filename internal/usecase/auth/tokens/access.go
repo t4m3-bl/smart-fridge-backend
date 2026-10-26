@@ -1,6 +1,7 @@
 package tokens
 
 import (
+	"errors"
 	"fmt"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
@@ -41,7 +42,7 @@ type Claims struct {
 
 func (m *JWTTokenManager) Generate(user *domain.User) (dto.Token, error) {
 	if user == nil {
-		return dto.Token{}, fmt.Errorf("generate jwt token: user is nil")
+		return dto.Token{}, errors.New("generate jwt token: user is nil")
 	}
 
 	now := time.Now().UTC()

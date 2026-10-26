@@ -139,7 +139,7 @@ func (c *Config) customValidate() error {
 	var errs []error
 
 	if c.App.ShutdownTimeout <= c.HTTP.ShutdownTimeout {
-		errs = append(errs, fmt.Errorf("app.shutdown_timeout must be greater than http.shutdown_timeout"))
+		errs = append(errs, errors.New("app.shutdown_timeout must be greater than http.shutdown_timeout"))
 	}
 
 	if c.Auth.JWT.RefreshTTL <= c.Auth.JWT.AccessTTL {

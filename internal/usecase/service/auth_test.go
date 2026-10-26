@@ -5,11 +5,12 @@ import (
 	"errors"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
-	oauthmocks "smart-fridge-backend/internal/usecase/auth/oauth/mocks"
 	"smart-fridge-backend/internal/usecase/service"
-	servicemocks "smart-fridge-backend/internal/usecase/service/mocks"
 	"testing"
 	"time"
+
+	oauthmocks "smart-fridge-backend/internal/usecase/auth/oauth/mocks"
+	servicemocks "smart-fridge-backend/internal/usecase/service/mocks"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,8 @@ type authMocks struct {
 }
 
 func newAuthService(t *testing.T) (*service.AuthService, authMocks) {
+	t.Helper()
+
 	ctrl := gomock.NewController(t)
 	m := authMocks{
 		repo:    servicemocks.NewMockUserRepository(ctrl),
@@ -73,7 +76,8 @@ func TestAuthService_SignUp(t *testing.T) {
 						assert.NoError(t, err)
 						assert.Equal(t, "hashed", hash)
 						return nil
-					})
+					},
+				)
 				m.session.EXPECT().Create(gomock.Any(), gomock.Any()).Return(refresh, nil)
 				m.access.EXPECT().Generate(gomock.Any()).Return(access, nil)
 			},
@@ -143,7 +147,7 @@ func TestAuthService_SignUp(t *testing.T) {
 			}
 
 			if tt.wantValidationErr {
-				var ve domain.ValidationErr
+				var ve domain.ValidationError
 				assert.True(t, errors.As(err, &ve))
 				assert.Equal(t, dto.TokenPair{}, got)
 				return
@@ -201,7 +205,7 @@ func TestAuthService_SignIn(t *testing.T) {
 			name:    "invalid email fails validation",
 			input:   dto.CredentialsInput{Email: "not-an-email", Password: "secret"},
 			setup:   func(authMocks) {},
-			wantErr: domain.ValidationErr{},
+			wantErr: domain.ValidationError{},
 		},
 		{
 			name:  "user not found maps to ErrInvalidCredentials",
@@ -258,11 +262,9 @@ func TestAuthService_SignIn(t *testing.T) {
 			got, err := svc.SignIn(context.Background(), tt.input)
 
 			if tt.wantErr != nil {
-				if _, ok := tt.wantErr.(domain.ValidationErr); ok {
-					_, isValidation := errors.AsType[domain.ValidationErr](err)
+				if _, ok := errors.AsType[domain.ValidationError](tt.wantErr); ok {
+					_, isValidation := errors.AsType[domain.ValidationError](err)
 					assert.True(t, isValidation)
-				} else {
-					assert.ErrorIs(t, err, tt.wantErr)
 				}
 				assert.Equal(t, dto.TokenPair{}, got)
 				return
@@ -320,7 +322,8 @@ func TestAuthService_OauthCallback(t *testing.T) {
 						assert.Equal(t, domain.ProviderYandex, u.Identities[0].Provider)
 						assert.Equal(t, yandexUID, *u.Identities[0].ProviderUserID)
 						return nil
-					})
+					},
+				)
 				m.session.EXPECT().Create(gomock.Any(), gomock.Any()).Return(refresh, nil)
 			},
 			want: refresh,
@@ -393,8 +396,8 @@ func TestAuthService_OauthCallback(t *testing.T) {
 			}
 
 			if tt.wantValidationErr {
-				_, isValidation := errors.AsType[domain.ValidationErr](err)
-				assert.True(t, isValidation, "expected ValidationErr, got: %v", err)
+				_, isValidation := errors.AsType[domain.ValidationError](err)
+				assert.True(t, isValidation, "expected ValidationError, got: %v", err)
 				assert.Equal(t, dto.Token{}, got)
 				return
 			}

@@ -12,49 +12,68 @@ import (
 const MIMEApplicationProblemJSON = "application/problem+json"
 
 func HTTPErrorHandler(c *echo.Context, err error) {
-	if resp, uErr := echo.UnwrapResponse(c.Response()); uErr == nil {
-		if resp.Committed {
-			return
-		}
+	if resp, uErr := echo.UnwrapResponse(c.Response()); uErr == nil && resp.Committed {
+		return
 	}
 
-	problem := api.Problem{
-		RequestId: new(c.Response().Header().Get(echo.HeaderXRequestID)),
-		Status:    http.StatusInternalServerError,
-		Type:      "about:blank",
+	status := http.StatusInternalServerError
+	problem := api.Error{
+		Code:    "internal_error",
+		Message: "internal server error",
 	}
 
-	// determine the status code for the error
-	if _, ok := errors.AsType[domain.ValidationErr](err); ok {
-		problem.Status = http.StatusBadRequest
+	if vErr, ok := errors.AsType[domain.ValidationErr](err); ok {
+		status = http.StatusBadRequest
+		problem.Code = "validation_error"
+		problem.Message = vErr.Error()
 	} else {
 		switch {
 		case errors.Is(err, domain.ErrAlreadyExists):
-			problem.Status = http.StatusConflict
+			status = http.StatusConflict
+			problem.Code = "already_exists"
+			problem.Message = err.Error()
 
-		case errors.Is(err, domain.ErrInvalidCredentials),
-			errors.Is(err, domain.ErrInvalidSession):
-			problem.Status = http.StatusUnauthorized
+		case errors.Is(err, domain.ErrInvalidCredentials):
+			status = http.StatusUnauthorized
+			problem.Code = "invalid_credentials"
+			problem.Message = err.Error()
 
-		case errors.Is(err, domain.ErrNotFound),
-			errors.Is(err, domain.ErrUnknownProvider):
-			problem.Status = http.StatusNotFound
+		case errors.Is(err, domain.ErrInvalidSession):
+			status = http.StatusUnauthorized
+			problem.Code = "invalid_session"
+			problem.Message = err.Error()
+
+		case errors.Is(err, domain.ErrNotFound):
+			status = http.StatusNotFound
+			problem.Code = "not_found"
+			problem.Message = err.Error()
+
+		case errors.Is(err, domain.ErrUnknownProvider):
+			status = http.StatusNotFound
+			problem.Code = "unknown_provider"
+			problem.Message = err.Error()
+
+		case errors.Is(err, domain.ErrUnprocessableEntity):
+			status = http.StatusUnprocessableEntity
+			problem.Code = "unprocessable_entity"
+			problem.Message = err.Error()
 
 		case errors.Is(err, domain.ErrProviderUnavailable):
-			problem.Status = http.StatusBadGateway
+			status = http.StatusBadGateway
+			problem.Code = "provider_unavailable"
+			problem.Message = err.Error()
 
-		case echo.StatusCode(err) != 0:
-			problem.Status = echo.StatusCode(err)
+		default:
+			if s := echo.StatusCode(err); s != 0 {
+				status = s
+				problem.Code = http.StatusText(s)
+				problem.Message = err.Error()
+			}
 		}
 	}
 
-	problem.Title = http.StatusText(problem.Status)
-	if problem.Status < http.StatusInternalServerError {
-		problem.Detail = new(err.Error())
-	}
-
 	c.Response().Header().Set(echo.HeaderContentType, MIMEApplicationProblemJSON)
-	if errJSON := c.JSON(problem.Status, problem); errJSON != nil {
-		c.Logger().Error(errJSON.Error())
+	if jsonErr := c.JSON(status, problem); jsonErr != nil {
+		c.Logger().Error(jsonErr.Error())
 	}
 }

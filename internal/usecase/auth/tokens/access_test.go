@@ -13,6 +13,8 @@ import (
 )
 
 func TestNewTokenManager(t *testing.T) {
+	t.Parallel()
+
 	const secret = "a-string-secret-at-least-256-bits-long"
 
 	type args struct {
@@ -51,6 +53,8 @@ func TestNewTokenManager(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := tokens.NewTokenManager(tt.args.secret, tt.args.ttl)
 
 			if tt.wantErr {
@@ -66,6 +70,8 @@ func TestNewTokenManager(t *testing.T) {
 }
 
 func TestJWTTokenManager_Generate(t *testing.T) {
+	t.Parallel()
+
 	const (
 		secret        = "a-string-secret-at-least-256-bits-long"
 		issuer        = "smart-fridge-auth"
@@ -99,6 +105,8 @@ func TestJWTTokenManager_Generate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			now := time.Now().UTC()
 			got, err := m.Generate(tt.args.user)
 

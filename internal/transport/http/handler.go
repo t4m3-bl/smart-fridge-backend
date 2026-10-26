@@ -12,7 +12,6 @@ var _ api.StrictServerInterface = (*Handler)(nil)
 
 type Handler struct {
 	*controllers.AuthController
-	controllers.Unimplemented
 }
 
 func NewHandler(auth *controllers.AuthController) *Handler {

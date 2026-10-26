@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/google/uuid"
 )
 
@@ -76,4 +79,15 @@ func (p Provider) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+func (p *Provider) UnmarshalText(text []byte) error {
+	name := strings.ToLower(strings.TrimSpace(string(text)))
+	provider, err := ToProvider(name)
+	if err != nil {
+		return fmt.Errorf("invalid identity provider: %s", name)
+	}
+
+	*p = provider
+	return nil
 }

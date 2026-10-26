@@ -2,12 +2,13 @@ package cookie
 
 import (
 	"net/http"
-	"smart-fridge-backend/internal/dto"
 	"time"
 )
 
 const (
-	path = "/api/v1/auth"
+	RefreshTokenCookieName  = "refresh_token"
+	OAuthStateCookieName    = "oauth_state"
+	OAuthVerifierCookieName = "oauth_verifier"
 )
 
 type Factory struct {
@@ -18,40 +19,50 @@ func NewFactory(secure bool) *Factory {
 	return &Factory{secure: secure}
 }
 
-func (f *Factory) CreateSecuredCookie(name, value string, maxAge time.Duration) *http.Cookie {
+func (f *Factory) CreateRefreshTokenCookie(value string, ttl time.Duration) *http.Cookie {
 	return &http.Cookie{
-		Name:     name,
+		Name:     RefreshTokenCookieName,
 		Value:    value,
-		Path:     path,
-		MaxAge:   int(maxAge.Seconds()),
+		Path:     "/api/v1/auth/refresh",
+		MaxAge:   int(ttl.Seconds()),
 		HttpOnly: true,
 		Secure:   f.secure,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	}
 }
 
-func (f *Factory) CreateOAuthCookie(name, value string, maxAge time.Duration) *http.Cookie {
-	ck := f.CreateSecuredCookie(name, value, maxAge)
-	ck.SameSite = http.SameSiteLaxMode
-	return ck
+func (f *Factory) CreateOAuthStateCookie(value string, ttl time.Duration) *http.Cookie {
+	return &http.Cookie{
+		Name:     OAuthStateCookieName,
+		Value:    value,
+		Path:     "/api/v1/auth/",
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   f.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
 }
 
-func (f *Factory) ClearOAuthCookie(name string) *http.Cookie {
-	ck := f.CreateOAuthCookie(name, "", 0)
-	ck.MaxAge = -1
-	return ck
-}
-
-func (f *Factory) CreateRefreshTokenCookie(refresh dto.Token) *http.Cookie {
-	return f.CreateSecuredCookie(
-		"refresh_token",
-		refresh.Body,
-		refresh.TTL,
-	)
+func (f *Factory) CreateOAuthVerifierCookie(value string, ttl time.Duration) *http.Cookie {
+	return &http.Cookie{
+		Name:     OAuthVerifierCookieName,
+		Value:    value,
+		Path:     "/api/v1/auth/",
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   f.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
 }
 
 func (f *Factory) ClearCookie(name string) *http.Cookie {
-	ck := f.CreateSecuredCookie(name, "", 0)
-	ck.MaxAge = -1
-	return ck
+	return &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/api/v1/auth/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   f.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
 }

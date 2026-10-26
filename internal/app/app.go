@@ -5,7 +5,7 @@ import (
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/repository/postgres"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
-	http2 "smart-fridge-backend/internal/transport/http"
+	httpserver "smart-fridge-backend/internal/transport/http"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/cookie"
@@ -13,7 +13,6 @@ import (
 	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"smart-fridge-backend/internal/usecase/service"
 	"smart-fridge-backend/pkg/crypto/argon2id"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
@@ -22,7 +21,8 @@ import (
 func New(cfg *config.Config) *fx.App {
 	return fx.New(
 		fx.Supply(cfg),
-		fx.StopTimeout(cfg.HTTP.ShutdownTimeout+5*time.Second),
+		fx.Supply(cfg.App.FrontendURL),
+		fx.StopTimeout(cfg.App.ShutdownTimeout),
 
 		infrastructure,
 		usecases,
@@ -66,20 +66,20 @@ var usecases = fx.Module("usecases",
 var transport = fx.Module("transport",
 	fx.Provide(
 		newCookieFactory,
-		newAuthController,
-		fx.Annotate(http2.NewHandler, fx.As(new(api.StrictServerInterface))),
-		http2.NewServer,
+		controllers.NewAuthController,
+		fx.Annotate(httpserver.NewHandler, fx.As(new(api.StrictServerInterface))),
+		httpserver.NewServer,
 	),
-	fx.Invoke(http2.RegisterLifecycle),
+	fx.Invoke(httpserver.RegisterLifecycle),
 )
 
 func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
 	return argon2id.NewArgon2idHasher(argon2id.Params{
-		Memory:  cfg.Argon2.MemoryKiB,
-		Time:    cfg.Argon2.Time,
-		Threads: cfg.Argon2.Threads,
-		SaltLen: cfg.Argon2.SaltLen,
-		KeyLen:  cfg.Argon2.KeyLen,
+		Memory:  cfg.Crypto.Argon2.MemoryKiB,
+		Time:    cfg.Crypto.Argon2.Time,
+		Threads: cfg.Crypto.Argon2.Threads,
+		SaltLen: cfg.Crypto.Argon2.SaltLen,
+		KeyLen:  cfg.Crypto.Argon2.KeyLen,
 	})
 }
 
@@ -88,30 +88,21 @@ func newPool(cfg *config.Config) (*pgxpool.Pool, error) {
 }
 
 func newAccessTokenManager(cfg *config.Config) (*tokens.JWTTokenManager, error) {
-	return tokens.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL)
+	return tokens.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.JWT.AccessTTL)
 }
 
 func newRefreshTokenManager(cfg *config.Config) (*tokens.RefreshTokenManager, error) {
-	return tokens.NewRefreshTokenManager(cfg.Auth.RefreshTTL)
+	return tokens.NewRefreshTokenManager(cfg.Auth.JWT.RefreshTTL)
 }
 
 func newOAuthProviders(cfg *config.Config) *oauth.BaseProvider {
-	return oauth.New(cfg.OAuth)
+	return oauth.New(cfg.Auth.OAuth)
 }
 
 func newOAuthTokensManager(cfg *config.Config) (*tokens.OauthTokensManger, error) {
-	return tokens.NewOauthTokensManger(cfg.Auth.OAuthTTl)
-}
-
-func newAuthController(
-	cfg *config.Config,
-	cookies *cookie.Factory,
-	auth *service.AuthService,
-	session *service.SessionService,
-) *controllers.AuthController {
-	return controllers.NewAuthController(cookies, auth, session, cfg.OAuth.FrontendURL)
+	return tokens.NewOauthTokensManger(cfg.Auth.OAuth.TokensTTL)
 }
 
 func newCookieFactory(cfg *config.Config) *cookie.Factory {
-	return cookie.NewFactory(cfg.Mode == config.PROD)
+	return cookie.NewFactory(cfg.App.Env == config.PROD)
 }

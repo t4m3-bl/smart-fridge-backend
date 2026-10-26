@@ -29,7 +29,7 @@ func NewUser(rawEmail string) (*User, error) {
 	}, nil
 }
 
-func (u *User) HasIndentity(p Provider) bool {
+func (u *User) HasIdentity(p Provider) bool {
 	for _, identity := range u.Identities {
 		if p == identity.Provider {
 			return true
@@ -40,7 +40,7 @@ func (u *User) HasIndentity(p Provider) bool {
 }
 
 func (u *User) AddNativeIdentity(passwordHash string) error {
-	if u.HasIndentity(ProviderNative) {
+	if u.HasIdentity(ProviderNative) {
 		return ErrAlreadyExists
 	}
 
@@ -54,7 +54,7 @@ func (u *User) AddNativeIdentity(passwordHash string) error {
 }
 
 func (u *User) AddExternalIdentity(p Provider, providerUserID string) error {
-	if u.HasIndentity(p) {
+	if u.HasIdentity(p) {
 		return ErrAlreadyExists
 	}
 

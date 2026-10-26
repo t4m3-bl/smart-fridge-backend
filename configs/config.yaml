@@ -1,26 +1,31 @@
-mode: dev
+app:
+  env: dev
+  frontend_url: http://localhost:3000
+  shutdown_timeout: 15s
+  version: 1.0.0
 
 http:
-  addr: ":8080"
+  addr: :8080
   shutdown_timeout: 10s
   cors_origins:
     - http://localhost:5173
     - http://localhost:3000
 
 auth:
-  access_ttl: 15m
-  refresh_ttl: 720h
-  oauth_ttl: 10m
+  jwt:
+    access_ttl: 15m
+    refresh_ttl: 720h
+  oauth:
+    tokens_ttl: 10m
+    providers:
+      yandex:
+        scopes:
+          - login:email
 
-argon2:
-  memory_kib: 65536
-  time: 3
-  threads: 4
-  salt_len: 16
-  key_len: 32
-
-oauth:
-  frontend_url: http://localhost:3000
-  yandex:
-    scopes:
-      - login:email
+crypto:
+  argon2:
+    memory_kib: 65536
+    time: 3
+    threads: 4
+    salt_len: 16
+    key_len: 32

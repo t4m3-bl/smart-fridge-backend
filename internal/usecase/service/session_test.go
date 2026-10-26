@@ -17,6 +17,8 @@ import (
 )
 
 func TestSessionService_Create(t *testing.T) {
+	t.Parallel()
+
 	user := &domain.User{
 		ID:    domain.UserID(uuid.New()),
 		Email: "example@test.com",
@@ -56,6 +58,8 @@ func TestSessionService_Create(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrl := gomock.NewController(t)
 			sessions := mockservice.NewMockSessionRepository(ctrl)
 			users := mockservice.NewMockUserFinder(ctrl)
@@ -80,6 +84,8 @@ func TestSessionService_Create(t *testing.T) {
 }
 
 func TestSessionService_Rotate(t *testing.T) {
+	t.Parallel()
+
 	const oldRefresh = "old-refresh-token"
 	user := &domain.User{
 		ID:    domain.UserID(uuid.New()),
@@ -146,6 +152,8 @@ func TestSessionService_Rotate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrl := gomock.NewController(t)
 			sessions := mockservice.NewMockSessionRepository(ctrl)
 			users := mockservice.NewMockUserFinder(ctrl)
@@ -170,6 +178,8 @@ func TestSessionService_Rotate(t *testing.T) {
 }
 
 func TestSessionService_Revoke(t *testing.T) {
+	t.Parallel()
+
 	revokeErr := errors.New("revoke failed")
 	refresh := "refresh-to-revoke"
 
@@ -203,6 +213,8 @@ func TestSessionService_Revoke(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrl := gomock.NewController(t)
 			sessions := mockservice.NewMockSessionRepository(ctrl)
 			users := mockservice.NewMockUserFinder(ctrl)
@@ -218,6 +230,7 @@ func TestSessionService_Revoke(t *testing.T) {
 				assert.ErrorIs(t, err, tt.wantErr)
 				return
 			}
+
 			assert.NoError(t, err)
 		})
 	}

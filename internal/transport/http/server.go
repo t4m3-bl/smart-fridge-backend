@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,10 +15,6 @@ import (
 	echoMiddleware "github.com/labstack/echo/v5/middleware"
 	"go.uber.org/fx"
 )
-
-const apiBasePath = "/api/v1"
-
-var ErrShutdownTimeout = errors.New("http server: shutdown did not finish in time")
 
 type Server struct {
 	echo *echo.Echo
@@ -54,17 +49,17 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 	e.Use(echoMiddleware.Gzip())
 
 	// prod mode addons
-	if cfg.Mode == config.PROD {
+	if cfg.App.Env == config.PROD {
 		e.Use(echoMiddleware.Secure())
 	}
 
 	// routes and controllers registration
-	apiGroup := e.Group(apiBasePath, middleware.JWT(cfg.Auth.JWTSecret, spec, apiBasePath))
+	apiGroup := e.Group("/api/v1", middleware.JWT(cfg.Auth.JWTSecret, spec, swagger.SpecPath, "/api/v1"))
 	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
 	e.GET("/favicon.ico", noContentHandler)
 
 	// dev mode addons
-	if cfg.Mode == config.DEV {
+	if cfg.App.Env == config.DEV {
 		swagger.UseSwagger(e)
 	}
 
@@ -114,7 +109,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-s.done:
 		return nil
 	case <-ctx.Done():
-		return ErrShutdownTimeout
+		return fmt.Errorf("http server: shutdown did not finish in time")
 	}
 }
 

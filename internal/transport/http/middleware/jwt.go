@@ -3,16 +3,15 @@ package middleware
 import (
 	"net/http"
 	"regexp"
-	"smart-fridge-backend/internal/transport/http/swagger"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	echojwt "github.com/labstack/echo-jwt/v5"
 	"github.com/labstack/echo/v5"
 )
 
-func JWT(signingKey string, spec *openapi3.T, basePath string) echo.MiddlewareFunc {
+func JWT(signingKey string, spec *openapi3.T, specPath, basePath string) echo.MiddlewareFunc {
 	public := buildPublicRoutes(spec, basePath)
-	public[routeKey(http.MethodGet, swagger.SpecPath)] = struct{}{}
+	public[routeKey(http.MethodGet, specPath)] = struct{}{}
 
 	return echojwt.WithConfig(echojwt.Config{
 		SigningKey: []byte(signingKey),

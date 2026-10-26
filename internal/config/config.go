@@ -4,105 +4,86 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
+	"smart-fridge-backend/internal/domain"
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
-type Mode int
-
-const (
-	DEV Mode = iota
-	TEST
-	PROD
-)
-
-func (m Mode) String() string {
-	switch m {
-	case DEV:
-		return "dev"
-	case TEST:
-		return "test"
-	case PROD:
-		return "prod"
-	default:
-		return fmt.Sprintf("Mode(%d)", int(m))
-	}
-}
-
-func (m *Mode) UnmarshalText(text []byte) error {
-	switch strings.ToLower(strings.TrimSpace(string(text))) {
-	case "dev":
-		*m = DEV
-	case "test":
-		*m = TEST
-	case "prod":
-		*m = PROD
-	default:
-		return fmt.Errorf("unknown mode %q, expected dev, test or prod", text)
-	}
-	return nil
-}
-
 type Config struct {
-	Mode     Mode     `mapstructure:"mode"`
+	App      App      `mapstructure:"app"`
 	HTTP     HTTP     `mapstructure:"http"`
 	Database Database `mapstructure:"database"`
 	Auth     Auth     `mapstructure:"auth"`
-	Argon2   Argon2   `mapstructure:"argon2"`
-	OAuth    OAuth    `mapstructure:"oauth"`
+	Crypto   Crypto   `mapstructure:"crypto"`
 }
 
-type Database struct {
-	URL string `mapstructure:"url"`
+type FrontendURL string
+
+type App struct {
+	Env             Env           `mapstructure:"env"`
+	FrontendURL     FrontendURL   `mapstructure:"frontend_url" validate:"required,url"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required,duration"`
+	Version         string        `mapstructure:"version" validate:"required"`
 }
 
 type HTTP struct {
-	Addr            string        `mapstructure:"addr"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	Addr            string        `mapstructure:"addr" validate:"required"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required,gt=0"`
 	CORSOrigins     []string      `mapstructure:"cors_origins"`
 }
 
-type Auth struct {
-	JWTSecret  string        `mapstructure:"jwt_secret"`
-	AccessTTL  time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
-	OAuthTTl   time.Duration `mapstructure:"oauth_ttl"`
+type Database struct {
+	URL string `mapstructure:"url" validate:"required"`
 }
 
-type Argon2 struct {
-	MemoryKiB uint32 `mapstructure:"memory_kib"`
-	Time      uint32 `mapstructure:"time"`
-	Threads   uint8  `mapstructure:"threads"`
-	SaltLen   uint32 `mapstructure:"salt_len"`
-	KeyLen    uint32 `mapstructure:"key_len"`
+type Auth struct {
+	JWTSecret string `mapstructure:"jwt_secret" validate:"required,min=32"`
+	JWT       JWT    `mapstructure:"jwt"`
+	OAuth     OAuth  `mapstructure:"oauth"`
+}
+
+type JWT struct {
+	AccessTTL  time.Duration `mapstructure:"access_ttl" validate:"required,gt=0"`
+	RefreshTTL time.Duration `mapstructure:"refresh_ttl" validate:"required,gt=0"`
 }
 
 type OAuth struct {
-	FrontendURL string        `mapstructure:"frontend_url"`
-	Yandex      OAuthProvider `mapstructure:"yandex"`
+	TokensTTL time.Duration                     `mapstructure:"tokens_ttl" validate:"required,gt=0"`
+	Providers map[domain.Provider]OAuthProvider `mapstructure:"providers"`
 }
 
 type OAuthProvider struct {
-	ClientID     string   `mapstructure:"client_id"`
-	ClientSecret string   `mapstructure:"client_secret"`
-	RedirectURL  string   `mapstructure:"redirect_url"`
-	Scopes       []string `mapstructure:"scopes"`
+	ClientID     string   `mapstructure:"client_id" validate:"required"`
+	ClientSecret string   `mapstructure:"client_secret" validate:"required"`
+	RedirectURL  string   `mapstructure:"redirect_url" validate:"omitempty,url"`
+	Scopes       []string `mapstructure:"scopes" validate:"required,gt=0"`
 }
 
 func (p OAuthProvider) Enabled() bool {
 	return p.ClientID != "" && p.ClientSecret != ""
 }
 
+type Crypto struct {
+	Argon2 Argon2 `mapstructure:"argon2"`
+}
+
+type Argon2 struct {
+	MemoryKiB uint32 `mapstructure:"memory_kib" validate:"required,gt=0"`
+	Time      uint32 `mapstructure:"time" validate:"required,gt=0"`
+	Threads   uint8  `mapstructure:"threads" validate:"required,gt=0"`
+	SaltLen   uint32 `mapstructure:"salt_len" validate:"required,gt=0"`
+	KeyLen    uint32 `mapstructure:"key_len" validate:"required,gt=0"`
+}
+
 const (
-	envPrefix       = "SMART_FRIDGE"
-	envFileVar      = "SMART_FRIDGE_CONFIG"
-	minJWTSecretLen = 32
+	envPrefix  = "SMART_FRIDGE"
+	envFileVar = "SMART_FRIDGE_CONFIG"
 )
 
 func Load() (*Config, error) {
@@ -142,83 +123,56 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	if err := cfg.Validate(); err != nil {
+	validate := validator.New()
+	if err := validate.Struct(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	if err := cfg.customValidate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	return &cfg, nil
 }
 
-func (c *Config) Validate() error {
+func (c *Config) customValidate() error {
 	var errs []error
 
-	if c.HTTP.Addr == "" {
-		errs = append(errs, errors.New("http.addr is required"))
-	}
-	if c.HTTP.ShutdownTimeout <= 0 {
-		errs = append(errs, errors.New("http.shutdown_timeout must be positive"))
+	if c.App.ShutdownTimeout <= c.HTTP.ShutdownTimeout {
+		errs = append(errs, fmt.Errorf("app.shutdown_timeout must be greater than http.shutdown_timeout"))
 	}
 
-	if len(c.Auth.JWTSecret) < minJWTSecretLen {
-		errs = append(errs, fmt.Errorf("auth.jwt_secret must be at least %d bytes (set %s_AUTH_JWT_SECRET)", minJWTSecretLen, envPrefix))
-	}
-	if c.Database.URL == "" {
-		errs = append(errs, fmt.Errorf("database.url is required (set %s_DATABASE_URL)", envPrefix))
-	}
-
-	if c.Auth.AccessTTL <= 0 {
-		errs = append(errs, errors.New("auth.access_ttl must be positive"))
-	}
-	if c.Auth.RefreshTTL <= c.Auth.AccessTTL {
-		errs = append(errs, errors.New("auth.refresh_ttl must be greater than auth.access_ttl"))
-	}
-	if c.Auth.OAuthTTl <= 0 {
-		errs = append(errs, errors.New("auth.oauth_ttl must be positive"))
-	}
-
-	if _, err := url.ParseRequestURI(c.OAuth.FrontendURL); err != nil {
-		errs = append(errs, fmt.Errorf("oauth.frontend_url is invalid: %w", err))
-	}
-	if (c.OAuth.Yandex.ClientID == "") != (c.OAuth.Yandex.ClientSecret == "") {
-		errs = append(errs, fmt.Errorf("oauth.yandex: set both %[1]s_OAUTH_YANDEX_CLIENT_ID and %[1]s_OAUTH_YANDEX_CLIENT_SECRET or neither", envPrefix))
-	}
-	if c.OAuth.Yandex.Enabled() {
-		if _, err := url.ParseRequestURI(c.OAuth.Yandex.RedirectURL); err != nil {
-			errs = append(errs, fmt.Errorf("oauth.yandex.redirect_url is invalid: %w", err))
-		}
-	}
-
-	if c.Argon2.MemoryKiB == 0 || c.Argon2.Time == 0 || c.Argon2.Threads == 0 ||
-		c.Argon2.SaltLen == 0 || c.Argon2.KeyLen == 0 {
-		errs = append(errs, errors.New("argon2 parameters must be positive"))
+	if c.Auth.JWT.RefreshTTL <= c.Auth.JWT.AccessTTL {
+		errs = append(errs, errors.New("auth.jwt.refresh_ttl must be greater than auth.jwt.access_ttl"))
 	}
 
 	return errors.Join(errs...)
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("mode", "dev")
+	v.SetDefault("app.env", "dev")
+	v.SetDefault("app.frontend_url", "http://localhost:3000")
+	v.SetDefault("app.shutdown_timeout", "15s")
+	v.SetDefault("app.version", "1.0.0")
 
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", "10s")
 	v.SetDefault("http.cors_origins", []string{})
 
-	v.SetDefault("database.url", "")
+	v.SetDefault("auth.jwt.secret", "")
+	v.SetDefault("auth.jwt.access_ttl", "15m")
+	v.SetDefault("auth.jwt.refresh_ttl", "720h")
 
-	v.SetDefault("auth.jwt_secret", "")
-	v.SetDefault("auth.access_ttl", "15m")
-	v.SetDefault("auth.refresh_ttl", "720h")
-	v.SetDefault("auth.oauth_ttl", "10m")
+	v.SetDefault("auth.oauth.tokens_ttl", "10m")
 
-	v.SetDefault("oauth.frontend_url", "http://localhost:3000/")
-	v.SetDefault("oauth.yandex.client_id", "")
-	v.SetDefault("oauth.yandex.client_secret", "")
-	v.SetDefault("oauth.yandex.redirect_url", "http://localhost:8080/api/v1/auth/yandex/callback")
-	v.SetDefault("oauth.yandex.scopes", []string{"login:email", "login:info"})
+	v.SetDefault("auth.oauth.providers.yandex.client_id", "")
+	v.SetDefault("auth.oauth.providers.yandex.client_secret", "")
+	v.SetDefault("auth.oauth.providers.yandex.redirect_url", "http://localhost:8080/api/v1/auth/yandex/callback")
+	v.SetDefault("auth.oauth.providers.yandex.scopes", []string{"login:email"})
 
-	v.SetDefault("argon2.memory_kib", 64*1024)
-	v.SetDefault("argon2.time", 3)
-	v.SetDefault("argon2.threads", 4)
-	v.SetDefault("argon2.salt_len", 16)
-	v.SetDefault("argon2.key_len", 32)
+	v.SetDefault("crypto.argon2.memory_kib", 65536)
+	v.SetDefault("crypto.argon2.time", 3)
+	v.SetDefault("crypto.argon2.threads", 4)
+	v.SetDefault("crypto.argon2.salt_len", 16)
+	v.SetDefault("crypto.argon2.key_len", 32)
 }

@@ -34,7 +34,7 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		_ = tx.Rollback(ctx)
 	}()
 
-	// --- TRANSACTION ---
+	// --- TRANSACTION BEGIN ---
 	qtx := r.q.WithTx(tx)
 
 	if err := qtx.CreateUser(ctx, sqlc.CreateUserParams{
@@ -61,6 +61,7 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 			return fmt.Errorf("add identity: %w", err)
 		}
 	}
+	// --- TRANSACTION END ---
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
@@ -120,14 +121,14 @@ func (r *UserRepository) FindByIdentity(ctx context.Context, provider domain.Pro
 func (r *UserRepository) withIdentities(ctx context.Context, user *domain.User) (*domain.User, error) {
 	rows, err := r.q.GetIdentitiesByUserID(ctx, uuid.UUID(user.ID))
 	if err != nil {
-		return nil, fmt.Errorf("get identities: %w", err)
+		return nil, err
 	}
 
 	user.Identities = make([]domain.Identity, 0, len(rows))
 	for _, row := range rows {
 		provider, err := domain.ToProvider(row.Provider)
 		if err != nil {
-			return nil, fmt.Errorf("get identities: %w", err)
+			return nil, err
 		}
 
 		user.Identities = append(user.Identities, domain.Identity{

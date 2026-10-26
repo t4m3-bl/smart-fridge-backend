@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+//go:generate go run go.uber.org/mock/mockgen -source=provider.go -destination=mocks/provider_mock.go
+
 const httpTimeout = 10 * time.Second
 
 type Provider interface {
@@ -17,22 +19,27 @@ type Provider interface {
 }
 
 type BaseProvider struct {
-	providers map[string]Provider
+	providers map[domain.Provider]Provider
 }
 
 func New(cfg config.OAuth) *BaseProvider {
 	client := &http.Client{Timeout: httpTimeout}
-	providers := make(map[string]Provider)
+	providers := make(map[domain.Provider]Provider)
 
-	if cfg.Yandex.Enabled() {
-		providers[domain.ProviderYandex.String()] = NewYandexProvider(cfg.Yandex, client)
+	if pCfg, ok := cfg.Providers[domain.ProviderYandex]; ok {
+		providers[domain.ProviderYandex] = NewYandexProvider(pCfg, client)
 	}
 
 	return &BaseProvider{providers: providers}
 }
 
 func (p *BaseProvider) Use(providerName string) (Provider, error) {
-	provider, ok := p.providers[providerName]
+	providerType, err := domain.ToProvider(providerName)
+	if err != nil {
+		return nil, domain.ErrUnknownProvider
+	}
+
+	provider, ok := p.providers[providerType]
 	if !ok {
 		return nil, domain.ErrUnknownProvider
 	}

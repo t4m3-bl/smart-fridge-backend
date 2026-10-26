@@ -155,7 +155,7 @@ func (s *AuthService) OauthSignIn(providerName string) (dto.OAuthOutput, error) 
 func (s *AuthService) OauthCallback(ctx context.Context, input dto.OAuthCallbackInput) (dto.Token, error) {
 	p, err := domain.ToProvider(input.ProviderName)
 	if err != nil {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrUnknownProvider)
+		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
 	provider, err := s.provider.Use(input.ProviderName)
@@ -176,13 +176,9 @@ func (s *AuthService) OauthCallback(ctx context.Context, input dto.OAuthCallback
 		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
-	if info.Email == "" {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w", domain.ErrEmailRequired)
-	}
-
 	user, err = domain.NewUser(info.Email)
 	if err != nil {
-		return dto.Token{}, fmt.Errorf("oauth callback: %w: %w", domain.ErrEmailRequired, err)
+		return dto.Token{}, fmt.Errorf("oauth callback: %w", err)
 	}
 
 	_, err = s.user.FindByEmail(ctx, user.Email)

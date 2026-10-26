@@ -6,14 +6,13 @@ import (
 )
 
 var (
-	ErrNotFound            = errors.New("not found")
-	ErrAlreadyExists       = errors.New("already exists")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrInvalidSession      = errors.New("invalid or expired session")
-	ErrUnprocessableEntity = errors.New("unprocessable entity")
-	ErrUnknownProvider     = errors.New("unknown oauth provider")
-	ErrProviderUnavailable = errors.New("oauth provider unavailable")
-	ErrEmailRequired       = errors.New("oauth provider did not return an email")
+	ErrNotFound            = errors.New("not_found")
+	ErrAlreadyExists       = errors.New("already_exists")
+	ErrInvalidCredentials  = errors.New("invalid_credentials")
+	ErrInvalidSession      = errors.New("invalid_session")
+	ErrUnprocessableEntity = errors.New("unprocessable_entity")
+	ErrUnknownProvider     = errors.New("unknown_provider")
+	ErrProviderUnavailable = errors.New("provider_unavailable")
 )
 
 type ValidationErr struct {

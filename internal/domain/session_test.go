@@ -10,6 +10,8 @@ import (
 )
 
 func TestNewSession(t *testing.T) {
+	t.Parallel()
+
 	type args struct {
 		userID    domain.UserID
 		tokenHash string
@@ -48,6 +50,8 @@ func TestNewSession(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			now := time.Now().UTC()
 
 			got, err := domain.NewSession(tt.args.userID, tt.args.tokenHash, tt.args.expiresIn)
@@ -72,6 +76,8 @@ func TestNewSession(t *testing.T) {
 }
 
 func TestSession_IsExpired(t *testing.T) {
+	t.Parallel()
+
 	type args struct {
 		expiresIn time.Duration
 	}
@@ -93,6 +99,8 @@ func TestSession_IsExpired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			userID := domain.UserID(uuid.New())
 
 			session, err := domain.NewSession(userID, "hash", tt.args.expiresIn)

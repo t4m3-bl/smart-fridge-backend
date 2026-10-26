@@ -2,10 +2,9 @@ package controllers
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
-	"net/http"
-	"net/url"
+	"fmt"
+	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
@@ -21,14 +20,14 @@ type AuthController struct {
 	auth    *service.AuthService
 	session *service.SessionService
 
-	frontendURL string
+	frontendURL config.FrontendURL
 }
 
 func NewAuthController(
 	cookies *cookie.Factory,
 	auth *service.AuthService,
 	session *service.SessionService,
-	frontendURL string,
+	frontendURL config.FrontendURL,
 ) *AuthController {
 	return &AuthController{
 		cookies:     cookies,
@@ -38,62 +37,27 @@ func NewAuthController(
 	}
 }
 
-func (c *AuthController) SignUp(ctx context.Context, request api.SignUpRequestObject) (api.SignUpResponseObject, error) {
-	body := *request.Body
-	input := dto.CredentialsInput{
-		Email:    string(body.Email),
-		Password: body.Password,
-	}
-
-	pair, err := c.auth.SignUp(ctx, input)
+// SignUp processes a user registration request via email and password.
+func (c *AuthController) SignUp(ctx context.Context, req api.SignUpRequestObject) (api.SignUpResponseObject, error) {
+	resp, err := c.authenticate(ctx, req.Body, c.auth.SignUp)
 	if err != nil {
 		return nil, err
 	}
 
-	return api.SignUp201JSONResponse{
-		AuthSuccessJSONResponse: api.AuthSuccessJSONResponse{
-			Body: api.TokenResponse{
-				AccessToken: pair.Access.Body,
-				ExpiresIn:   int(pair.Access.TTL.Seconds()),
-				TokenType:   "Bearer",
-			},
-			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: []string{
-					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
-				},
-			},
-		},
-	}, nil
+	return api.SignUp201JSONResponse{AuthSuccessJSONResponse: resp}, nil
 }
 
-func (c *AuthController) SignIn(ctx context.Context, request api.SignInRequestObject) (api.SignInResponseObject, error) {
-	body := *request.Body
-	input := dto.CredentialsInput{
-		Email:    string(body.Email),
-		Password: body.Password,
-	}
-
-	pair, err := c.auth.SignIn(ctx, input)
+// SignIn handles the user login request using an email and password.
+func (c *AuthController) SignIn(ctx context.Context, req api.SignInRequestObject) (api.SignInResponseObject, error) {
+	resp, err := c.authenticate(ctx, req.Body, c.auth.SignIn)
 	if err != nil {
 		return nil, err
 	}
 
-	return api.SignIn200JSONResponse{
-		AuthSuccessJSONResponse: api.AuthSuccessJSONResponse{
-			Body: api.TokenResponse{
-				AccessToken: pair.Access.Body,
-				ExpiresIn:   int(pair.Access.TTL.Seconds()),
-				TokenType:   "Bearer",
-			},
-			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: []string{
-					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
-				},
-			},
-		},
-	}, nil
+	return api.SignIn200JSONResponse{AuthSuccessJSONResponse: resp}, nil
 }
 
+// Refresh handles the request to update the session and its associated tokens.
 func (c *AuthController) Refresh(ctx context.Context, request api.RefreshRequestObject) (api.RefreshResponseObject, error) {
 	oldRefresh := request.Params.RefreshToken
 
@@ -103,21 +67,11 @@ func (c *AuthController) Refresh(ctx context.Context, request api.RefreshRequest
 	}
 
 	return api.Refresh200JSONResponse{
-		AuthSuccessJSONResponse: api.AuthSuccessJSONResponse{
-			Body: api.TokenResponse{
-				AccessToken: pair.Access.Body,
-				ExpiresIn:   int(pair.Access.TTL.Seconds()),
-				TokenType:   "Bearer",
-			},
-			Headers: api.AuthSuccessResponseHeaders{
-				SetCookie: []string{
-					c.cookies.CreateRefreshTokenCookie(pair.Refresh).String(),
-				},
-			},
-		},
+		AuthSuccessJSONResponse: c.newAuthSuccessResponse(pair),
 	}, nil
 }
 
+// Logout handles the request to log out of the system.
 func (c *AuthController) Logout(ctx context.Context, request api.LogoutRequestObject) (api.LogoutResponseObject, error) {
 	refresh := request.Params.RefreshToken
 
@@ -128,12 +82,13 @@ func (c *AuthController) Logout(ctx context.Context, request api.LogoutRequestOb
 	return api.Logout204Response{
 		Headers: api.Logout204ResponseHeaders{
 			SetCookie: []string{
-				c.cookies.ClearCookie("refresh_token").String(),
+				c.cookies.ClearCookie(cookie.RefreshTokenCookieName).String(),
 			},
 		},
 	}, nil
 }
 
+// OauthSignIn handles an authorization request via a third-party provider and redirects to the corresponding authorization site.
 func (c *AuthController) OauthSignIn(_ context.Context, request api.OauthSignInRequestObject) (api.OauthSignInResponseObject, error) {
 	providerName := string(request.Provider)
 
@@ -146,25 +101,23 @@ func (c *AuthController) OauthSignIn(_ context.Context, request api.OauthSignInR
 		Headers: api.OauthSignIn302ResponseHeaders{
 			Location: &output.URL,
 			SetCookie: []string{
-				c.cookies.CreateOAuthCookie(oauthStateCookie, output.State, output.TTL).String(),
-				c.cookies.CreateOAuthCookie(oauthVerifierCookie, output.Verifier, output.TTL).String(),
+				c.cookies.CreateOAuthStateCookie(output.State, output.TTL).String(),
+				c.cookies.CreateRefreshTokenCookie(output.Verifier, output.TTL).String(),
 			},
 		},
 	}, nil
 }
 
+// OauthCallback handles the request received from a third-party provider and then redirects the user to the appropriate page.
 func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCallbackRequestObject) (api.OauthCallbackResponseObject, error) {
 	p := request.Params
 
-	if subtle.ConstantTimeCompare([]byte(p.State), []byte(p.OauthState)) != 1 {
+	if p.State != p.OauthState {
 		return nil, echo.ErrBadRequest
 	}
 
-	if p.Error != nil && *p.Error != "" {
-		if *p.Error == oauthErrAccessDenied {
-			return c.oauthRedirect(oauthErrAccessDenied, nil), nil
-		}
-		return nil, domain.ErrProviderUnavailable
+	if p.Error != nil {
+		return c.redirectWithErrorOnCallback("https://localhost:3030/login", *p.Error)
 	}
 
 	if p.Code == nil || *p.Code == "" {
@@ -176,50 +129,71 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 		Code:         *p.Code,
 		Verifier:     p.OauthVerifier,
 	})
-	switch {
-	case errors.Is(err, domain.ErrAlreadyExists):
-		return c.oauthRedirect(oauthErrEmailTaken, nil), nil
-	case errors.Is(err, domain.ErrEmailRequired):
-		return c.oauthRedirect(oauthErrEmailRequired, nil), nil
-	case err != nil:
-		return nil, err
-	}
-
-	return c.oauthRedirect("", c.cookies.CreateRefreshTokenCookie(refresh)), nil
-}
-
-const (
-	oauthStateCookie    = "oauth_state"
-	oauthVerifierCookie = "oauth_verifier"
-
-	oauthErrAccessDenied  = "access_denied"
-	oauthErrEmailRequired = "email_required"
-	oauthErrEmailTaken    = "email_taken"
-)
-
-func (c *AuthController) oauthRedirect(errCode string, refresh *http.Cookie) api.OauthCallback302Response {
-	location := c.frontendURL
-	if errCode != "" {
-		if u, err := url.Parse(c.frontendURL); err == nil {
-			q := u.Query()
-			q.Set("error", errCode)
-			u.RawQuery = q.Encode()
-			location = u.String()
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAlreadyExists):
+			return c.redirectWithErrorOnCallback("https://localhost:3030/login", "already_exists")
+		case errors.Is(err, domain.ErrProviderUnavailable):
+			return c.redirectWithErrorOnCallback("https://localhost:3030/login", "provider_unavailable")
 		}
-	}
 
-	cookies := []string{
-		c.cookies.ClearOAuthCookie(oauthStateCookie).String(),
-		c.cookies.ClearOAuthCookie(oauthVerifierCookie).String(),
-	}
-	if refresh != nil {
-		cookies = append(cookies, refresh.String())
+		return nil, err
 	}
 
 	return api.OauthCallback302Response{
 		Headers: api.OauthCallback302ResponseHeaders{
-			Location:  new(location + "/fridge"),
-			SetCookie: cookies,
+			Location: new("https://localhost:3030/fridge"),
+			SetCookie: []string{
+				c.cookies.ClearCookie(cookie.OAuthStateCookieName).String(),
+				c.cookies.ClearCookie(cookie.OAuthVerifierCookieName).String(),
+				c.cookies.CreateRefreshTokenCookie(refresh.Body, refresh.TTL).String(),
+			},
+		},
+	}, nil
+}
+
+// authenticate is a helper method for user authentication.
+func (c *AuthController) authenticate(
+	ctx context.Context,
+	body *api.Credentials,
+	call func(context.Context, dto.CredentialsInput) (dto.TokenPair, error),
+) (api.AuthSuccessJSONResponse, error) {
+	pair, err := call(ctx, dto.CredentialsInput{
+		Email:    string(body.Email),
+		Password: body.Password,
+	})
+	if err != nil {
+		return api.AuthSuccessJSONResponse{}, err
+	}
+
+	return c.newAuthSuccessResponse(pair), nil
+}
+
+// newAuthSuccessResponse is a helper method for constructing a response upon successful authentication.
+func (c *AuthController) newAuthSuccessResponse(pair dto.TokenPair) api.AuthSuccessJSONResponse {
+	return api.AuthSuccessJSONResponse{
+		Body: api.TokenResponse{
+			AccessToken: pair.Access.Body,
+			ExpiresIn:   int(pair.Access.TTL.Seconds()),
+			TokenType:   "Bearer",
+		},
+		Headers: api.AuthSuccessResponseHeaders{
+			SetCookie: []string{
+				c.cookies.CreateRefreshTokenCookie(pair.Refresh.Body, pair.Refresh.TTL).String(),
+			},
 		},
 	}
+}
+
+// redirectWithErrorOnCallback is a helper method for generating a redirect response that includes errors.
+func (c *AuthController) redirectWithErrorOnCallback(location, errStr string) (api.OauthCallback302Response, error) {
+	return api.OauthCallback302Response{
+		Headers: api.OauthCallback302ResponseHeaders{
+			Location: new(fmt.Sprintf("%s?error=%s", location, errStr)),
+			SetCookie: []string{
+				c.cookies.ClearCookie(cookie.OAuthStateCookieName).String(),
+				c.cookies.ClearCookie(cookie.OAuthVerifierCookieName).String(),
+			},
+		},
+	}, nil
 }

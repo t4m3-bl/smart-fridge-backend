@@ -1,0 +1,90 @@
+﻿version: "2"
+
+run:
+  go: "1.27"
+  tests: true
+  build-tags:
+    - integration
+
+linters:
+  default: none
+  enable:
+    # --- base ---
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # --- errors and context ---
+    - errorlint
+    - errname
+    - nilerr
+    - contextcheck
+    - noctx
+    - fatcontext
+
+    # --- database and resources ---
+    - sqlclosecheck
+    - rowserrcheck
+    - bodyclose
+
+    # --- correction and security ---
+    - gosec
+    - exhaustive
+    - copyloopvar
+    - wastedassign
+    - unparam
+    - recvcheck
+
+    # --- styles ---
+    - revive
+    - gocritic
+    - cyclop
+    - misspell
+    - perfsprint
+    - prealloc
+    - intrange
+    - usestdlibvars
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - nolintlint
+
+    # --- tests ---
+    - thelper
+    - tparallel
+    - paralleltest
+    - usetesting
+
+    # --- architecture ---
+    #- depguard
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+    cyclop:
+      max-complexity: 15
+
+  exclusions:
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - gochecknoglobals
+      - path: 'internal/app/.*'
+        linters:
+          - gochecknoglobals
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+        clothe-returns: true

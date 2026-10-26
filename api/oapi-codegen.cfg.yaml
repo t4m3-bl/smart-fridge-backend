@@ -1,0 +1,13 @@
+﻿# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+package: api
+generate:
+  echo5-server: true
+  strict-server: true
+  models: true
+  embedded-spec: true
+output: api.gen.go
+
+output-options:
+  user-templates:
+    strict/strict-interface.tmpl: ../../../../api/templates/strict/strict-interface.tmpl
+    strict/strict-responses.tmpl: ../../../../api/templates/strict/strict-responses.tmpl

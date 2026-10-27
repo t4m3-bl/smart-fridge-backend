@@ -1,0 +1,67 @@
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  frontend:
+    image: ghcr.io/t4m3-bl/smart-fridge-frontend:latest
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/t4m3-bl/smart-fridge-backend:latest
+    restart: unless-stopped
+    environment:
+      SMART_FRIDGE_APP_ENV: prod
+      SMART_FRIDGE_APP_FRONTEND_URL: https://${DOMAIN}
+      SMART_FRIDGE_HTTP_CORS_ORIGINS: https://${DOMAIN}
+      SMART_FRIDGE_AUTH_JWT_SECRET: ${SMART_FRIDGE_AUTH_JWT_SECRET}
+      SMART_FRIDGE_OAUTH_YANDEX_CLIENT_ID: ${SMART_FRIDGE_OAUTH_YANDEX_CLIENT_ID}
+      SMART_FRIDGE_OAUTH_YANDEX_CLIENT_SECRET: ${SMART_FRIDGE_OAUTH_YANDEX_CLIENT_SECRET}
+      SMART_FRIDGE_AUTH_OAUTH_PROVIDERS_YANDEX_REDIRECT_URL: https://${DOMAIN}/api/v1/auth/yandex/callback
+      SMART_FRIDGE_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    image: ghcr.io/t4m3-bl/smart-fridge-backend:latest
+    entrypoint: ["/goose", "-dir", "/migrations"]
+    command: ["up"]
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: "host=postgres port=5432 user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB} sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

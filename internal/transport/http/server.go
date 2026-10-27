@@ -59,8 +59,7 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
 	e.GET("/favicon.ico", noContentHandler)
 
-	// dev mode addons
-	if cfg.App.Env == config.DEV {
+	if cfg.HTTP.SwaggerEnabled {
 		swagger.UseSwagger(e)
 	}
 

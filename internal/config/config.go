@@ -36,6 +36,7 @@ type HTTP struct {
 	Addr            string        `mapstructure:"addr" validate:"required"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required,gt=0"`
 	CORSOrigins     []string      `mapstructure:"cors_origins"`
+	SwaggerEnabled  bool          `mapstructure:"swagger_enabled"`
 }
 
 type Database struct {
@@ -161,6 +162,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", "10s")
 	v.SetDefault("http.cors_origins", []string{})
+	v.SetDefault("http.swagger_enabled", false)
 
 	v.SetDefault("database.url", "")
 

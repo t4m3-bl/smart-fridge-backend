@@ -11,6 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Category struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+	Name   string
+}
+
 type Identity struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -27,21 +33,34 @@ type Indicator struct {
 	MaxDays *int32
 }
 
+type Mutation struct {
+	Seq       int64
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Type      string
+	ProductID uuid.UUID
+	Payload   []byte
+	Status    string
+	Reason    *string
+	Message   *string
+	CreatedAt time.Time
+}
+
 type Product struct {
 	ID                    uuid.UUID
 	UserID                uuid.UUID
 	Name                  string
-	Category              *string
 	Description           *string
 	Quantity              *string
 	ImageLink             *string
-	ManufacturedAt        pgtype.Date
-	ExpiresAt             pgtype.Date
-	OpenedAt              pgtype.Date
+	ManufacturedAt        *time.Time
+	ExpiresAt             time.Time
+	OpenedAt              *time.Time
 	ShelfLifeAfterOpening *int32
-	EffectiveExpiresAt    pgtype.Date
+	EffectiveExpiresAt    *time.Time
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+	CategoryID            *uuid.UUID
 }
 
 type Session struct {

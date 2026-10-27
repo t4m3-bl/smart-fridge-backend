@@ -22,6 +22,7 @@ func JWT(signingKey string, spec *openapi3.T, specPath, basePath string) echo.Mi
 			_, ok := public[routeKey(c.Request().Method, c.Path())]
 			return ok
 		},
+		SuccessHandler: putUserID,
 		ErrorHandler: func(_ *echo.Context, err error) error {
 			return echo.ErrUnauthorized.Wrap(err)
 		},

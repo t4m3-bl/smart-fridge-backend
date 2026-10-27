@@ -9,17 +9,121 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/labstack/echo/v5"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for CreateProductMutationType.
+const (
+	CreateProductMutationTypeCreateProduct CreateProductMutationType = "createProduct"
+)
+
+// Valid indicates whether the value is a known member of the CreateProductMutationType enum.
+func (e CreateProductMutationType) Valid() bool {
+	switch e {
+	case CreateProductMutationTypeCreateProduct:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteProductMutationType.
+const (
+	DeleteProductMutationTypeDeleteProduct DeleteProductMutationType = "deleteProduct"
+)
+
+// Valid indicates whether the value is a known member of the DeleteProductMutationType enum.
+func (e DeleteProductMutationType) Valid() bool {
+	switch e {
+	case DeleteProductMutationTypeDeleteProduct:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MutationAppliedStatus.
+const (
+	Applied MutationAppliedStatus = "applied"
+)
+
+// Valid indicates whether the value is a known member of the MutationAppliedStatus enum.
+func (e MutationAppliedStatus) Valid() bool {
+	switch e {
+	case Applied:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MutationRejectedReason.
+const (
+	MutationRejectedReasonAlreadyExists   MutationRejectedReason = "already_exists"
+	MutationRejectedReasonNotFound        MutationRejectedReason = "not_found"
+	MutationRejectedReasonValidationError MutationRejectedReason = "validation_error"
+)
+
+// Valid indicates whether the value is a known member of the MutationRejectedReason enum.
+func (e MutationRejectedReason) Valid() bool {
+	switch e {
+	case MutationRejectedReasonAlreadyExists:
+		return true
+	case MutationRejectedReasonNotFound:
+		return true
+	case MutationRejectedReasonValidationError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MutationRejectedStatus.
+const (
+	Rejected MutationRejectedStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the MutationRejectedStatus enum.
+func (e MutationRejectedStatus) Valid() bool {
+	switch e {
+	case Rejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MutationType.
+const (
+	MutationTypeCreateProduct MutationType = "createProduct"
+	MutationTypeDeleteProduct MutationType = "deleteProduct"
+	MutationTypeUpdateProduct MutationType = "updateProduct"
+)
+
+// Valid indicates whether the value is a known member of the MutationType enum.
+func (e MutationType) Valid() bool {
+	switch e {
+	case MutationTypeCreateProduct:
+		return true
+	case MutationTypeDeleteProduct:
+		return true
+	case MutationTypeUpdateProduct:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for OAuthProviderName.
 const (
@@ -51,11 +155,64 @@ func (e TokenResponseTokenType) Valid() bool {
 	}
 }
 
+// Defines values for UpdateProductMutationType.
+const (
+	UpdateProductMutationTypeUpdateProduct UpdateProductMutationType = "updateProduct"
+)
+
+// Valid indicates whether the value is a known member of the UpdateProductMutationType enum.
+func (e UpdateProductMutationType) Valid() bool {
+	switch e {
+	case UpdateProductMutationTypeUpdateProduct:
+		return true
+	default:
+		return false
+	}
+}
+
+// AppliedMutation defines model for AppliedMutation.
+type AppliedMutation struct {
+	// CreatedAt When the server applied the mutation
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Data Present for createProduct and updateProduct
+	Data       *ProductData       `json:"data,omitempty"`
+	MutationId openapi_types.UUID `json:"mutationId"`
+	ProductId  openapi_types.UUID `json:"productId"`
+	Seq        int64              `json:"seq"`
+	Type       MutationType       `json:"type"`
+}
+
+// CreateProductMutation defines model for CreateProductMutation.
+type CreateProductMutation struct {
+	Data ProductData `json:"data"`
+
+	// MutationId Unique per mutation, created by the client
+	MutationId openapi_types.UUID `json:"mutationId"`
+
+	// ProductId Product id, created by the client
+	ProductId openapi_types.UUID        `json:"productId"`
+	Type      CreateProductMutationType `json:"type"`
+}
+
+// CreateProductMutationType defines model for CreateProductMutation.Type.
+type CreateProductMutationType string
+
 // Credentials defines model for Credentials.
 type Credentials struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
 }
+
+// DeleteProductMutation defines model for DeleteProductMutation.
+type DeleteProductMutation struct {
+	MutationId openapi_types.UUID        `json:"mutationId"`
+	ProductId  openapi_types.UUID        `json:"productId"`
+	Type       DeleteProductMutationType `json:"type"`
+}
+
+// DeleteProductMutationType defines model for DeleteProductMutation.Type.
+type DeleteProductMutationType string
 
 // Error defines model for Error.
 type Error struct {
@@ -70,8 +227,80 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// Mutation defines model for Mutation.
+type Mutation struct {
+	union json.RawMessage
+}
+
+// MutationApplied defines model for MutationApplied.
+type MutationApplied struct {
+	MutationId openapi_types.UUID    `json:"mutationId"`
+	Seq        int64                 `json:"seq"`
+	Status     MutationAppliedStatus `json:"status"`
+}
+
+// MutationAppliedStatus defines model for MutationApplied.Status.
+type MutationAppliedStatus string
+
+// MutationRejected defines model for MutationRejected.
+type MutationRejected struct {
+	Message    string             `json:"message"`
+	MutationId openapi_types.UUID `json:"mutationId"`
+
+	// Reason validation_error: invalid product data; not_found: the product or the category does not exist (or was deleted); already_exists: a product with this id already exists
+	Reason MutationRejectedReason `json:"reason"`
+	Status MutationRejectedStatus `json:"status"`
+}
+
+// MutationRejectedReason validation_error: invalid product data; not_found: the product or the category does not exist (or was deleted); already_exists: a product with this id already exists
+type MutationRejectedReason string
+
+// MutationRejectedStatus defines model for MutationRejected.Status.
+type MutationRejectedStatus string
+
+// MutationResult defines model for MutationResult.
+type MutationResult struct {
+	union json.RawMessage
+}
+
+// MutationType defines model for MutationType.
+type MutationType string
+
 // OAuthProviderName defines model for OAuthProviderName.
 type OAuthProviderName string
+
+// ProductData defines model for ProductData.
+type ProductData struct {
+	CategoryId     *openapi_types.UUID `json:"categoryId,omitempty"`
+	Description    *string             `json:"description,omitempty"`
+	ExpiresAt      openapi_types.Date  `json:"expiresAt"`
+	ImageLink      *string             `json:"imageLink,omitempty"`
+	ManufacturedAt *openapi_types.Date `json:"manufacturedAt,omitempty"`
+	Name           string              `json:"name"`
+	OpenedAt       *openapi_types.Date `json:"openedAt,omitempty"`
+	Quantity       *string             `json:"quantity,omitempty"`
+
+	// ShelfLifeAfterOpening Days the product keeps after opening
+	ShelfLifeAfterOpening *int32 `json:"shelfLifeAfterOpening,omitempty"`
+}
+
+// PullResponse defines model for PullResponse.
+type PullResponse struct {
+	// Cursor Pass as `since` in the next call
+	Cursor    int64             `json:"cursor"`
+	HasMore   bool              `json:"hasMore"`
+	Mutations []AppliedMutation `json:"mutations"`
+}
+
+// PushRequest defines model for PushRequest.
+type PushRequest struct {
+	Mutations []Mutation `json:"mutations"`
+}
+
+// PushResponse defines model for PushResponse.
+type PushResponse struct {
+	Results []MutationResult `json:"results"`
+}
 
 // TokenResponse defines model for TokenResponse.
 type TokenResponse struct {
@@ -87,6 +316,17 @@ type TokenResponse struct {
 
 // TokenResponseTokenType defines model for TokenResponse.TokenType.
 type TokenResponseTokenType string
+
+// UpdateProductMutation Replaces all product fields; omitted optional fields are cleared
+type UpdateProductMutation struct {
+	Data       ProductData               `json:"data"`
+	MutationId openapi_types.UUID        `json:"mutationId"`
+	ProductId  openapi_types.UUID        `json:"productId"`
+	Type       UpdateProductMutationType `json:"type"`
+}
+
+// UpdateProductMutationType defines model for UpdateProductMutation.Type.
+type UpdateProductMutationType string
 
 // OAuthProvider defines model for OAuthProvider.
 type OAuthProvider = OAuthProviderName
@@ -139,11 +379,258 @@ type OauthCallbackParams struct {
 	OauthVerifier    string  `form:"oauth_verifier" json:"oauth_verifier"`
 }
 
+// PullParams defines parameters for Pull.
+type PullParams struct {
+	Since int64 `form:"since" json:"since"`
+	Limit *int  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // SignInJSONRequestBody defines body for SignIn for application/json ContentType.
 type SignInJSONRequestBody = Credentials
 
 // SignUpJSONRequestBody defines body for SignUp for application/json ContentType.
 type SignUpJSONRequestBody = Credentials
+
+// PushJSONRequestBody defines body for Push for application/json ContentType.
+type PushJSONRequestBody = PushRequest
+
+// AsCreateProductMutation returns the union data inside the Mutation as a CreateProductMutation
+func (t Mutation) AsCreateProductMutation() (CreateProductMutation, error) {
+	var body CreateProductMutation
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCreateProductMutation overwrites any union data inside the Mutation as the provided CreateProductMutation
+func (t *Mutation) FromCreateProductMutation(v CreateProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"createProduct"}`))
+	t.union = b
+	return err
+}
+
+// MergeCreateProductMutation performs a merge with any union data inside the Mutation, using the provided CreateProductMutation
+func (t *Mutation) MergeCreateProductMutation(v CreateProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"createProduct"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsUpdateProductMutation returns the union data inside the Mutation as a UpdateProductMutation
+func (t Mutation) AsUpdateProductMutation() (UpdateProductMutation, error) {
+	var body UpdateProductMutation
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromUpdateProductMutation overwrites any union data inside the Mutation as the provided UpdateProductMutation
+func (t *Mutation) FromUpdateProductMutation(v UpdateProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"updateProduct"}`))
+	t.union = b
+	return err
+}
+
+// MergeUpdateProductMutation performs a merge with any union data inside the Mutation, using the provided UpdateProductMutation
+func (t *Mutation) MergeUpdateProductMutation(v UpdateProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"updateProduct"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsDeleteProductMutation returns the union data inside the Mutation as a DeleteProductMutation
+func (t Mutation) AsDeleteProductMutation() (DeleteProductMutation, error) {
+	var body DeleteProductMutation
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDeleteProductMutation overwrites any union data inside the Mutation as the provided DeleteProductMutation
+func (t *Mutation) FromDeleteProductMutation(v DeleteProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"deleteProduct"}`))
+	t.union = b
+	return err
+}
+
+// MergeDeleteProductMutation performs a merge with any union data inside the Mutation, using the provided DeleteProductMutation
+func (t *Mutation) MergeDeleteProductMutation(v DeleteProductMutation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"deleteProduct"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t Mutation) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t Mutation) ValueByDiscriminator() (any, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "createProduct":
+		return t.AsCreateProductMutation()
+	case "deleteProduct":
+		return t.AsDeleteProductMutation()
+	case "updateProduct":
+		return t.AsUpdateProductMutation()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t Mutation) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *Mutation) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMutationApplied returns the union data inside the MutationResult as a MutationApplied
+func (t MutationResult) AsMutationApplied() (MutationApplied, error) {
+	var body MutationApplied
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMutationApplied overwrites any union data inside the MutationResult as the provided MutationApplied
+func (t *MutationResult) FromMutationApplied(v MutationApplied) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"status":"applied"}`))
+	t.union = b
+	return err
+}
+
+// MergeMutationApplied performs a merge with any union data inside the MutationResult, using the provided MutationApplied
+func (t *MutationResult) MergeMutationApplied(v MutationApplied) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"status":"applied"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMutationRejected returns the union data inside the MutationResult as a MutationRejected
+func (t MutationResult) AsMutationRejected() (MutationRejected, error) {
+	var body MutationRejected
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMutationRejected overwrites any union data inside the MutationResult as the provided MutationRejected
+func (t *MutationResult) FromMutationRejected(v MutationRejected) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"status":"rejected"}`))
+	t.union = b
+	return err
+}
+
+// MergeMutationRejected performs a merge with any union data inside the MutationResult, using the provided MutationRejected
+func (t *MutationResult) MergeMutationRejected(v MutationRejected) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"status":"rejected"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MutationResult) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"status"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t MutationResult) ValueByDiscriminator() (any, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "applied":
+		return t.AsMutationApplied()
+	case "rejected":
+		return t.AsMutationRejected()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t MutationResult) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MutationResult) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -165,6 +652,12 @@ type ServerInterface interface {
 	// OauthSignIn Start sign-in with an OAuth provider
 	// (GET /auth/{provider}/sign-in)
 	OauthSignIn(ctx *echo.Context, provider OAuthProvider) error
+	// Pull Get applied mutations after the cursor
+	// (GET /sync/pull)
+	Pull(ctx *echo.Context, params PullParams) error
+	// Push Apply queued client mutations
+	// (POST /sync/push)
+	Push(ctx *echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -326,6 +819,40 @@ func (w *ServerInterfaceWrapper) OauthSignIn(ctx *echo.Context) error {
 	return err
 }
 
+// Pull converts echo context to params.
+func (w *ServerInterfaceWrapper) Pull(ctx *echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PullParams
+	// ------------- Required query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "since", ctx.QueryParams(), &params.Since, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter since: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Pull(ctx, params)
+	return err
+}
+
+// Push converts echo context to params.
+func (w *ServerInterfaceWrapper) Push(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Push(ctx)
+	return err
+}
+
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -379,6 +906,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout, options.OperationMiddlewares["logout"]...)
 	router.GET(options.BaseURL+"/auth/:provider/sign-in", wrapper.OauthSignIn, options.OperationMiddlewares["oauthSignIn"]...)
 	router.GET(options.BaseURL+"/auth/:provider/callback", wrapper.OauthCallback, options.OperationMiddlewares["oauthCallback"]...)
+	router.POST(options.BaseURL+"/sync/push", wrapper.Push, options.OperationMiddlewares["push"]...)
+	router.GET(options.BaseURL+"/sync/pull", wrapper.Pull, options.OperationMiddlewares["pull"]...)
 
 }
 
@@ -903,6 +1432,184 @@ func (response OauthSignIn500ApplicationProblemPlusJSONResponse) VisitOauthSignI
 	return err
 }
 
+type PullRequestObject struct {
+	Params PullParams
+}
+
+type PullResponseObject interface {
+	VisitPullResponse(w http.ResponseWriter) error
+}
+
+type Pull200JSONResponse PullResponse
+
+func (response Pull200JSONResponse) VisitPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Pull400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response Pull400ApplicationProblemPlusJSONResponse) VisitPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Pull401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response Pull401ApplicationProblemPlusJSONResponse) VisitPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Pull429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response Pull429ApplicationProblemPlusJSONResponse) VisitPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Pull500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response Pull500ApplicationProblemPlusJSONResponse) VisitPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PushRequestObject struct {
+	Body *PushJSONRequestBody
+}
+
+type PushResponseObject interface {
+	VisitPushResponse(w http.ResponseWriter) error
+}
+
+type Push200JSONResponse PushResponse
+
+func (response Push200JSONResponse) VisitPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Push400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response Push400ApplicationProblemPlusJSONResponse) VisitPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Push401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response Push401ApplicationProblemPlusJSONResponse) VisitPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Push429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response Push429ApplicationProblemPlusJSONResponse) VisitPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Push500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response Push500ApplicationProblemPlusJSONResponse) VisitPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Logout Log out
@@ -923,6 +1630,12 @@ type StrictServerInterface interface {
 	// OauthSignIn Start sign-in with an OAuth provider
 	// (GET /auth/{provider}/sign-in)
 	OauthSignIn(ctx context.Context, request OauthSignInRequestObject) (OauthSignInResponseObject, error)
+	// Pull Get applied mutations after the cursor
+	// (GET /sync/pull)
+	Pull(ctx context.Context, request PullRequestObject) (PullResponseObject, error)
+	// Push Apply queued client mutations
+	// (POST /sync/push)
+	Push(ctx context.Context, request PushRequestObject) (PushResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx *echo.Context, request any) (any, error)
@@ -1116,46 +1829,130 @@ func (sh *strictHandler) OauthSignIn(ctx *echo.Context, provider OAuthProvider) 
 	return nil
 }
 
+// Pull operation middleware
+func (sh *strictHandler) Pull(ctx *echo.Context, params PullParams) error {
+	var request PullRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request any) (any, error) {
+		return sh.ssi.Pull(ctx.Request().Context(), request.(PullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Pull")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PullResponseObject); ok {
+		return validResponse.VisitPullResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// Push operation middleware
+func (sh *strictHandler) Push(ctx *echo.Context) error {
+	var request PushRequestObject
+
+	var body PushJSONRequestBody
+	var err error
+	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// Bind only the request body, so that path and query parameters
+		// are not also bound into the body struct.
+		err = echo.BindBody(ctx, &body)
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding.
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx *echo.Context, request any) (any, error) {
+		return sh.ssi.Push(ctx.Request().Context(), request.(PushRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Push")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PushResponseObject); ok {
+		return validResponse.VisitPushResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"sfzPAA==",
+	"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",
+	"M8FZ67Re0NNC/xoA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

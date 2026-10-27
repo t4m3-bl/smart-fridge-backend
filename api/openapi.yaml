@@ -9,12 +9,14 @@ info:
   version: 0.1.0
 
 servers:
-  - url: /api/v1
-    description: Current host
+  - url: http://localhost:8080/api/v1
+    description: Local development
 
 tags:
   - name: auth
     description: User authentication and authorization
+  - name: sync
+    description: Offline-first synchronization
 
 security:
   - BearerAuth: [ ]
@@ -35,16 +37,16 @@ paths:
             schema:
               $ref: "#/components/schemas/Credentials"
       responses:
-        201:
+        "201":
           description: User Created
           $ref: "#/components/responses/AuthSuccess"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/sign-in:
@@ -62,16 +64,16 @@ paths:
             schema:
               $ref: "#/components/schemas/Credentials"
       responses:
-        200:
+        "200":
           description: User sign in
           $ref: "#/components/responses/AuthSuccess"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/refresh:
@@ -88,13 +90,13 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           $ref: "#/components/responses/AuthSuccess"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/logout:
@@ -114,12 +116,12 @@ paths:
           schema:
             type: string
       responses:
-        204:
+        "204":
           description: Logged out
           headers:
             Set-Cookie:
               $ref: "#/components/headers/ClearedRefreshTokenCookie"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/{provider}/sign-in:
@@ -137,7 +139,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OAuthProvider"
       responses:
-        302:
+        "302":
           description: Redirect to the provider's authorization page
           headers:
             Location:
@@ -146,11 +148,11 @@ paths:
                 format: uri
             Set-Cookie:
               $ref: "#/components/headers/OAuthTempCookie"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/{provider}/callback:
@@ -199,7 +201,7 @@ paths:
           schema:
             type: string
       responses:
-        302:
+        "302":
           description: >
             Redirect back to the app. Always clears the oauth_* cookies.
             On success the refresh cookie is set and the app calls /auth/refresh.
@@ -214,16 +216,65 @@ paths:
                 format: uri
             Set-Cookie:
               $ref: "#/components/headers/RefreshTokenCookie"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
-        502:
+        "502":
           $ref: "#/components/responses/BadGateway"
+
+  /sync/push:
+    post:
+      tags: [ sync ]
+      summary: Apply queued client mutations
+      description: >
+        Mutations are applied in request order; the last applied mutation wins.
+        Every mutation gets its own result, so a rejected mutation does not
+        affect the others. A mutation with an already processed mutationId is
+        not applied again; its previous result is returned. After a push the
+        client calls /sync/pull to receive the changes.
+      operationId: push
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushRequest" }
+      responses:
+        "200":
+          description: Results in request order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  /sync/pull:
+    get:
+      tags: [ sync ]
+      summary: Get applied mutations after the cursor
+      description: >
+        Returns applied mutations with seq greater than `since`, ordered by seq,
+        including the client's own ones. since=0 returns everything.
+      operationId: pull
+      parameters:
+        - { name: since, in: query, required: true, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: A page of changes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PullResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
 
 components:
   schemas:
@@ -272,6 +323,136 @@ components:
     OAuthProviderName:
       type: string
       enum: [ yandex ]
+
+    PushRequest:
+      type: object
+      required: [ mutations ]
+      properties:
+        mutations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Mutation" }
+
+    MutationType:
+      type: string
+      enum: [ createProduct, updateProduct, deleteProduct ]
+
+    Mutation:
+      oneOf:
+        - $ref: "#/components/schemas/CreateProductMutation"
+        - $ref: "#/components/schemas/UpdateProductMutation"
+        - $ref: "#/components/schemas/DeleteProductMutation"
+      discriminator:
+        propertyName: type
+        mapping:
+          createProduct: "#/components/schemas/CreateProductMutation"
+          updateProduct: "#/components/schemas/UpdateProductMutation"
+          deleteProduct: "#/components/schemas/DeleteProductMutation"
+
+    CreateProductMutation:
+      type: object
+      required: [ type, mutationId, productId, data ]
+      properties:
+        type: { type: string, enum: [ createProduct ] }
+        mutationId: { type: string, format: uuid, description: "Unique per mutation, created by the client" }
+        productId: { type: string, format: uuid, description: "Product id, created by the client" }
+        data: { $ref: "#/components/schemas/ProductData" }
+
+    UpdateProductMutation:
+      type: object
+      required: [ type, mutationId, productId, data ]
+      description: Replaces all product fields; omitted optional fields are cleared
+      properties:
+        type: { type: string, enum: [ updateProduct ] }
+        mutationId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        data: { $ref: "#/components/schemas/ProductData" }
+
+    DeleteProductMutation:
+      type: object
+      required: [ type, mutationId, productId ]
+      properties:
+        type: { type: string, enum: [ deleteProduct ] }
+        mutationId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+
+    ProductData:
+      type: object
+      required: [ name, expiresAt ]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        categoryId: { type: string, format: uuid }
+        description: { type: string, maxLength: 500 }
+        quantity: { type: string, maxLength: 50 }
+        imageLink: { type: string, format: uri, maxLength: 2048 }
+        manufacturedAt: { type: string, format: date }
+        expiresAt: { type: string, format: date }
+        openedAt: { type: string, format: date }
+        shelfLifeAfterOpening: { type: integer, format: int32, minimum: 1, maximum: 3650, description: "Days the product keeps after opening" }
+
+    PushResponse:
+      type: object
+      required: [ results ]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/MutationResult" }
+
+    MutationResult:
+      oneOf:
+        - $ref: "#/components/schemas/MutationApplied"
+        - $ref: "#/components/schemas/MutationRejected"
+      discriminator:
+        propertyName: status
+        mapping:
+          applied: "#/components/schemas/MutationApplied"
+          rejected: "#/components/schemas/MutationRejected"
+
+    MutationApplied:
+      type: object
+      required: [ status, mutationId, seq ]
+      properties:
+        status: { type: string, enum: [ applied ] }
+        mutationId: { type: string, format: uuid }
+        seq: { type: integer, format: int64 }
+
+    MutationRejected:
+      type: object
+      required: [ status, mutationId, reason, message ]
+      properties:
+        status: { type: string, enum: [ rejected ] }
+        mutationId: { type: string, format: uuid }
+        reason:
+          type: string
+          enum: [ validation_error, not_found, already_exists ]
+          description: >
+            validation_error: invalid product data;
+            not_found: the product or the category does not exist (or was deleted);
+            already_exists: a product with this id already exists
+        message: { type: string }
+
+    AppliedMutation:
+      type: object
+      required: [ seq, mutationId, type, productId, createdAt ]
+      properties:
+        seq: { type: integer, format: int64 }
+        mutationId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/MutationType" }
+        productId: { type: string, format: uuid }
+        data:
+          description: Present for createProduct and updateProduct
+          allOf:
+            - $ref: "#/components/schemas/ProductData"
+        createdAt: { type: string, format: date-time, description: "When the server applied the mutation" }
+
+    PullResponse:
+      type: object
+      required: [ mutations, cursor, hasMore ]
+      properties:
+        mutations: { type: array, items: { $ref: "#/components/schemas/AppliedMutation" } }
+        cursor: { type: integer, format: int64, description: "Pass as `since` in the next call" }
+        hasMore: { type: boolean }
 
   parameters:
     OAuthProvider:

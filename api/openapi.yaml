@@ -9,8 +9,8 @@ info:
   version: 0.1.0
 
 servers:
-  - url: http://localhost:8080/api/v1
-    description: Local development
+  - url: /api/v1
+    description: Current host
 
 tags:
   - name: auth

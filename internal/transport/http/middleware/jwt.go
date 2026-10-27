@@ -16,6 +16,9 @@ func JWT(signingKey string, spec *openapi3.T, specPath, basePath string) echo.Mi
 	return echojwt.WithConfig(echojwt.Config{
 		SigningKey: []byte(signingKey),
 		Skipper: func(c *echo.Context) bool {
+			if c.RouteInfo().Method == echo.RouteNotFound {
+				return true
+			}
 			_, ok := public[routeKey(c.Request().Method, c.Path())]
 			return ok
 		},

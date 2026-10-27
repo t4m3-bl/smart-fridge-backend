@@ -28,7 +28,7 @@ type FrontendURL string
 type App struct {
 	Env             Env           `mapstructure:"env"`
 	FrontendURL     FrontendURL   `mapstructure:"frontend_url" validate:"required,url"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required,duration"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required,gt=0"`
 	Version         string        `mapstructure:"version" validate:"required"`
 }
 
@@ -97,6 +97,9 @@ func Load() (*Config, error) {
 	v.SetEnvPrefix(envPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	if err := bindEnvAliases(v); err != nil {
+		return nil, err
+	}
 
 	if path := os.Getenv(envFileVar); path != "" {
 		v.SetConfigFile(path)
@@ -159,7 +162,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.shutdown_timeout", "10s")
 	v.SetDefault("http.cors_origins", []string{})
 
-	v.SetDefault("auth.jwt.secret", "")
+	v.SetDefault("database.url", "")
+
+	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.jwt.access_ttl", "15m")
 	v.SetDefault("auth.jwt.refresh_ttl", "720h")
 
@@ -175,4 +180,19 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("crypto.argon2.threads", 4)
 	v.SetDefault("crypto.argon2.salt_len", 16)
 	v.SetDefault("crypto.argon2.key_len", 32)
+}
+
+func bindEnvAliases(v *viper.Viper) error {
+	aliases := map[string]string{
+		"auth.oauth.providers.yandex.client_id":     envPrefix + "_OAUTH_YANDEX_CLIENT_ID",
+		"auth.oauth.providers.yandex.client_secret": envPrefix + "_OAUTH_YANDEX_CLIENT_SECRET",
+	}
+
+	for key, env := range aliases {
+		if err := v.BindEnv(key, env); err != nil {
+			return fmt.Errorf("bind env %s: %w", env, err)
+		}
+	}
+
+	return nil
 }

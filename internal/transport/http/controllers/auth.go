@@ -103,7 +103,7 @@ func (c *AuthController) OauthSignIn(_ context.Context, request api.OauthSignInR
 			Location: &output.URL,
 			SetCookie: []string{
 				c.cookies.CreateOAuthStateCookie(output.State, output.TTL).String(),
-				c.cookies.CreateRefreshTokenCookie(output.Verifier, output.TTL).String(),
+				c.cookies.CreateOAuthVerifierCookie(output.Verifier, output.TTL).String(),
 			},
 		},
 	}, nil

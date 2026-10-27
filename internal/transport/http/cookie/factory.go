@@ -59,11 +59,16 @@ func (f *Factory) CreateOAuthVerifierCookie(value string, ttl time.Duration) *ht
 }
 
 func (f *Factory) ClearCookie(name string) *http.Cookie {
+	path := "/api/v1/auth/"
+	if name == RefreshTokenCookieName {
+		path = "/api/v1/auth/refresh"
+	}
+
 	// #nosec G124
 	return &http.Cookie{
 		Name:     name,
 		Value:    "",
-		Path:     "/api/v1/auth/",
+		Path:     path,
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   f.secure,

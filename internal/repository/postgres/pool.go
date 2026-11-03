@@ -66,7 +66,7 @@ func RegisterLifecycle(lc fx.Lifecycle, pool *pgxpool.Pool) {
 			if err := pool.Ping(ctx); err != nil {
 				return fmt.Errorf("ping postgres: %w", err)
 			}
-			return Migrate(ctx, pool)
+			return nil
 		},
 		OnStop: func(context.Context) error {
 			pool.Close()

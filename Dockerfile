@@ -21,6 +21,7 @@ WORKDIR /app
 COPY --from=build-stage /smart-fridge-backend /smart-fridge-backend
 COPY --from=build-stage /go/bin/goose /goose
 COPY --from=build-stage /app/migrations /migrations
+COPY --from=build-stage /app/configs /app/configs
 
 EXPOSE 8080
 

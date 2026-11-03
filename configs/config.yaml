@@ -10,6 +10,7 @@ http:
   cors_origins:
     - http://localhost:5173
     - http://localhost:3000
+  swagger_enabled: true
 
 auth:
   jwt:

@@ -117,7 +117,7 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 	}
 
 	if p.Error != nil {
-		return c.redirectWithErrorOnCallback("https://localhost:3030/login", *p.Error), nil
+		return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), *p.Error), nil
 	}
 
 	if p.Code == nil || *p.Code == "" {
@@ -132,9 +132,9 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrAlreadyExists):
-			return c.redirectWithErrorOnCallback("https://localhost:3030/login", "already_exists"), nil
+			return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), "already_exists"), nil
 		case errors.Is(err, domain.ErrProviderUnavailable):
-			return c.redirectWithErrorOnCallback("https://localhost:3030/login", "provider_unavailable"), nil
+			return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), "provider_unavailable"), nil
 		}
 
 		return nil, err
@@ -142,7 +142,7 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 
 	return api.OauthCallback302Response{
 		Headers: api.OauthCallback302ResponseHeaders{
-			Location: new("https://localhost:3030/fridge"),
+			Location: new(fmt.Sprintf("%s/fridge", c.frontendURL)),
 			SetCookie: []string{
 				c.cookies.ClearCookie(cookie.OAuthStateCookieName).String(),
 				c.cookies.ClearCookie(cookie.OAuthVerifierCookieName).String(),

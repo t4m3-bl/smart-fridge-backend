@@ -11,6 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Category struct {
+	ID      uuid.UUID
+	UserID  uuid.UUID
+	Name    string
+	Version int32
+}
+
 type Identity struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -31,7 +38,6 @@ type Product struct {
 	ID                    uuid.UUID
 	UserID                uuid.UUID
 	Name                  string
-	Category              *string
 	Description           *string
 	Quantity              *string
 	ImageLink             *string
@@ -42,6 +48,8 @@ type Product struct {
 	EffectiveExpiresAt    pgtype.Date
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+	CategoryID            pgtype.UUID
+	Version               int32
 }
 
 type Session struct {
@@ -58,6 +66,7 @@ type Setting struct {
 	HasNotifications bool
 	NotificationTime pgtype.Time
 	Timezone         string
+	Version          int32
 }
 
 type User struct {

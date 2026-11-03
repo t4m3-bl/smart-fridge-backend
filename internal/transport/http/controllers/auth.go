@@ -10,7 +10,6 @@ import (
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/cookie"
 	"smart-fridge-backend/internal/usecase/service"
-	"strings"
 
 	"github.com/labstack/echo/v5"
 )

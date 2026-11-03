@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"context"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"net/http"
 	"regexp"
 
@@ -14,7 +17,24 @@ func JWT(signingKey string, spec *openapi3.T, specPath, basePath string) echo.Mi
 	public[routeKey(http.MethodGet, specPath)] = struct{}{}
 
 	return echojwt.WithConfig(echojwt.Config{
-		SigningKey: []byte(signingKey),
+		SigningKey:    []byte(signingKey),
+		SigningMethod: "HS256",
+		SuccessHandler: func(c *echo.Context) error {
+			token, ok := c.Get("user").(*jwt.Token)
+			if !ok {
+				return echo.ErrUnauthorized
+			}
+			sub, err := token.Claims.GetSubject()
+			if err != nil {
+				return echo.ErrUnauthorized
+			}
+			id, err := uuid.Parse(sub)
+			if err != nil {
+				return echo.ErrUnauthorized
+			}
+			c.SetRequest(c.Request().WithContext(context.WithValue(c.Request().Context(), userIDKey{}, id)))
+			return nil
+		},
 		Skipper: func(c *echo.Context) bool {
 			if c.RouteInfo().Method == echo.RouteNotFound {
 				return true

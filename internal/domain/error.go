@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrVersionConflict     = errors.New("version_conflict")
 	ErrNotFound            = errors.New("not_found")
 	ErrAlreadyExists       = errors.New("already_exists")
 	ErrInvalidCredentials  = errors.New("invalid_credentials")

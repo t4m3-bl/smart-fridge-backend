@@ -2,56 +2,115 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"smart-fridge-backend/internal/domain"
+	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
+	"smart-fridge-backend/internal/transport/http/utils/header"
 	"smart-fridge-backend/internal/usecase/service"
+
+	"github.com/google/uuid"
+	openapitypes "github.com/oapi-codegen/runtime/types"
 )
 
 type ProductController struct{ service *service.ProductService }
 
 func NewProductController(s *service.ProductService) *ProductController { return &ProductController{s} }
-func (c *ProductController) UpdateProduct(ctx context.Context, r api.UpdateProductRequestObject) (api.UpdateProductResponseObject, error) {
-	user, err := middleware.UserID(ctx)
+
+func (c *ProductController) UpsertProduct(ctx context.Context, r api.UpsertProductRequestObject) (api.UpsertProductResponseObject, error) {
+	userID, err := middleware.GetUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if r.Body == nil {
-		return nil, domain.NewValidationErr("body", "required")
-	}
-	b := r.Body
-	if b.Id != r.Id {
-		return nil, domain.NewValidationErr("id", "body and path must match")
-	}
-	item, err := c.service.Save(ctx, user, domain.Product{ID: b.Id, Name: b.Name, CategoryID: b.CategoryId, Description: b.Description, Quantity: b.Quantity, ImageLink: b.ImageLink, ManufacturedAt: dateString(b.ManufacturedAt), ExpiresAt: b.ExpiresAt.Format("2006-01-02"), OpenedAt: dateString(b.OpenedAt), ShelfLifeAfterOpening: b.ShelfLifeAfterOpening}, r.Params.BaseVersion)
+
+	base, err := header.ResolveVersion(r.Params.IfMatch, r.Params.IfNoneMatch)
 	if err != nil {
 		return nil, err
 	}
-	return api.UpdateProduct200JSONResponse(productOutput(item)), nil
+	data, err := toProductData(*r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	p, err := c.service.Save(ctx, dto.ProductInput{
+		ProductID:   r.Id,
+		UserID:      userID,
+		BaseVersion: base,
+		Data:        data,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	tag := new(fmt.Sprintf(`"%d"`, p.Version))
+	if base == 0 {
+		return api.UpsertProduct201JSONResponse{
+			Body:    newProductOutput(p),
+			Headers: api.UpsertProduct201ResponseHeaders{ETag: tag},
+		}, nil
+	}
+	return api.UpsertProduct200JSONResponse{
+		Body:    newProductOutput(p),
+		Headers: api.UpsertProduct200ResponseHeaders{ETag: tag},
+	}, nil
 }
+
 func (c *ProductController) DeleteProduct(ctx context.Context, r api.DeleteProductRequestObject) (api.DeleteProductResponseObject, error) {
-	user, err := middleware.UserID(ctx)
+	userID, err := middleware.GetUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err = c.service.Delete(ctx, user, r.Id, r.Params.BaseVersion); err != nil {
+
+	base, err := header.GetVersion(*r.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = c.service.Delete(ctx, domain.UserID(userID), domain.ProductID(r.Id), base); err != nil {
 		return nil, err
 	}
 	return api.DeleteProduct204Response{}, nil
 }
-func (c *ProductController) ListProducts(ctx context.Context, r api.ListProductsRequestObject) (api.ListProductsResponseObject, error) {
-	user, err := middleware.UserID(ctx)
+
+func (c *ProductController) ListProducts(ctx context.Context, _ api.ListProductsRequestObject) (api.ListProductsResponseObject, error) {
+	userID, err := middleware.GetUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	limit, offset := page(r.Params.Limit, r.Params.Offset)
-	items, err := c.service.List(ctx, user, limit, offset)
+
+	items, err := c.service.List(ctx, domain.UserID(userID))
 	if err != nil {
 		return nil, err
 	}
-	result := make([]api.Product, 0, len(items))
+
+	out := make([]api.Product, 0, len(items))
 	for _, item := range items {
-		result = append(result, productOutput(item))
+		out = append(out, newProductOutput(&item))
 	}
-	return api.ListProducts200JSONResponse{Items: result}, nil
+
+	return api.ListProducts200JSONResponse{Items: out}, nil
+}
+
+func newProductOutput(p *domain.Product) api.Product {
+	out := api.Product{
+		Id:                    new(uuid.UUID(p.ID)),
+		Name:                  p.Name,
+		CategoryId:            uuid.UUID(p.CategoryID),
+		Description:           p.Description,
+		Quantity:              p.Quantity,
+		ImageLink:             (*string)(p.ImageLink),
+		ExpiresAt:             openapitypes.Date{Time: p.ExpiresAt},
+		ShelfLifeAfterOpening: p.ShelfLifeAfterOpening,
+		Version:               new(p.Version),
+	}
+
+	if p.ManufacturedAt != nil {
+		out.ManufacturedAt = &openapitypes.Date{Time: *p.ManufacturedAt}
+	}
+	if p.OpenedAt != nil {
+		out.OpenedAt = &openapitypes.Date{Time: *p.OpenedAt}
+	}
+
+	return out
 }

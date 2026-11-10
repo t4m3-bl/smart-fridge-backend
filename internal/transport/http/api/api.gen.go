@@ -53,10 +53,12 @@ func (e TokenResponseTokenType) Valid() bool {
 
 // Category Category of products.
 type Category struct {
-	Id openapi_types.UUID `json:"id"`
+	Id *openapi_types.UUID `json:"id,omitempty"`
 
 	// Name Example: Dairy
-	Name    string `json:"name"`
+	Name string `json:"name"`
+
+	// Version Set by the server; the same value is sent in the ETag header
 	Version *int32 `json:"version,omitempty"`
 }
 
@@ -93,12 +95,12 @@ type Indicator struct {
 // OAuthProviderName defines model for OAuthProviderName.
 type OAuthProviderName string
 
-// Product Fields of a product that the client can edit
+// Product A product in the user's fridge. All fields except `version` are set by the client (full replacement).
 type Product struct {
-	CategoryId     *openapi_types.UUID `json:"categoryId,omitempty"`
+	CategoryId     openapi_types.UUID  `json:"categoryId"`
 	Description    *string             `json:"description,omitempty"`
 	ExpiresAt      openapi_types.Date  `json:"expiresAt"`
-	Id             openapi_types.UUID  `json:"id"`
+	Id             *openapi_types.UUID `json:"id,omitempty"`
 	ImageLink      *string             `json:"imageLink,omitempty"`
 	ManufacturedAt *openapi_types.Date `json:"manufacturedAt,omitempty"`
 	Name           string              `json:"name"`
@@ -107,7 +109,9 @@ type Product struct {
 
 	// ShelfLifeAfterOpening Days the product stays good after it was opened
 	ShelfLifeAfterOpening *int32 `json:"shelfLifeAfterOpening,omitempty"`
-	Version               *int32 `json:"version,omitempty"`
+
+	// Version Set by the server; the same value is sent in the ETag header
+	Version *int32 `json:"version,omitempty"`
 }
 
 // ProductList defines model for ProductList.
@@ -119,9 +123,13 @@ type ProductList struct {
 type Settings struct {
 	HasNotifications *bool        `json:"hasNotifications,omitempty"`
 	Indicators       *[]Indicator `json:"indicators,omitempty"`
-	NotificationTime *string      `json:"notificationTime,omitempty"`
-	Timezone         *string      `json:"timezone,omitempty"`
-	Version          *int32       `json:"version,omitempty"`
+
+	// NotificationTime Example: 09:00:00
+	NotificationTime *string `json:"notificationTime,omitempty"`
+	Timezone         *string `json:"timezone,omitempty"`
+
+	// Version Set by the server; the same value is sent in the ETag header
+	Version *int32 `json:"version,omitempty"`
 }
 
 // TokenResponse defines model for TokenResponse.
@@ -139,20 +147,17 @@ type TokenResponse struct {
 // TokenResponseTokenType defines model for TokenResponse.TokenType.
 type TokenResponseTokenType string
 
-// BaseVersion defines model for BaseVersion.
-type BaseVersion = int64
-
 // Id defines model for Id.
 type Id = openapi_types.UUID
 
-// LimitParam defines model for LimitParam.
-type LimitParam = int
+// IfMatch Example: "3"
+type IfMatch = string
+
+// IfNoneMatch Example: *
+type IfNoneMatch = string
 
 // OAuthProvider defines model for OAuthProvider.
 type OAuthProvider = OAuthProviderName
-
-// OffsetParam defines model for OffsetParam.
-type OffsetParam = int
 
 // AuthSuccess defines model for AuthSuccess.
 type AuthSuccess = TokenResponse
@@ -166,14 +171,17 @@ type BadRequest = Error
 // Conflict defines model for Conflict.
 type Conflict = Error
 
-// Forbidden defines model for Forbidden.
-type Forbidden = Error
-
 // InternalServerError defines model for InternalServerError.
 type InternalServerError = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PreconditionFailed defines model for PreconditionFailed.
+type PreconditionFailed = Error
+
+// PreconditionRequired defines model for PreconditionRequired.
+type PreconditionRequired = Error
 
 // SettingsSuccess User settings
 type SettingsSuccess = Settings
@@ -208,52 +216,40 @@ type OauthCallbackParams struct {
 	OauthVerifier    string  `form:"oauth_verifier" json:"oauth_verifier"`
 }
 
-// ListCategoriesParams defines parameters for ListCategories.
-type ListCategoriesParams struct {
-	// Limit Количество возвращаемых элементов
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Offset Смещение от начала списка
-	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
-}
-
 // DeleteCategoryParams defines parameters for DeleteCategory.
 type DeleteCategoryParams struct {
-	// BaseVersion Version the client based its change on; omit for a never-synced product
-	BaseVersion *BaseVersion `form:"baseVersion,omitempty" json:"baseVersion,omitempty"`
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
-// CreateCategoryParams defines parameters for CreateCategory.
-type CreateCategoryParams struct {
-	// BaseVersion Version the client based its change on; omit for a never-synced product
-	BaseVersion *BaseVersion `form:"baseVersion,omitempty" json:"baseVersion,omitempty"`
+// UpsertCategoryParams defines parameters for UpsertCategory.
+type UpsertCategoryParams struct {
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+
+	// IfNoneMatch Must be exactly `*` when creating an entity: the request fails with 412 if the id already exists.
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // DeleteProductParams defines parameters for DeleteProduct.
 type DeleteProductParams struct {
-	// BaseVersion Version the client based its change on; omit for a never-synced product
-	BaseVersion *BaseVersion `form:"baseVersion,omitempty" json:"baseVersion,omitempty"`
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
-// UpdateProductParams defines parameters for UpdateProduct.
-type UpdateProductParams struct {
-	// BaseVersion Version the client based its change on; omit for a never-synced product
-	BaseVersion *BaseVersion `form:"baseVersion,omitempty" json:"baseVersion,omitempty"`
-}
+// UpsertProductParams defines parameters for UpsertProduct.
+type UpsertProductParams struct {
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 
-// ListProductsParams defines parameters for ListProducts.
-type ListProductsParams struct {
-	// Limit Количество возвращаемых элементов
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Offset Смещение от начала списка
-	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+	// IfNoneMatch Must be exactly `*` when creating an entity: the request fails with 412 if the id already exists.
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // PatchSettingsParams defines parameters for PatchSettings.
 type PatchSettingsParams struct {
-	// BaseVersion Version the client based its change on; omit for a never-synced product
-	BaseVersion *BaseVersion `form:"baseVersion,omitempty" json:"baseVersion,omitempty"`
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // SignInJSONRequestBody defines body for SignIn for application/json ContentType.
@@ -262,11 +258,11 @@ type SignInJSONRequestBody = Credentials
 // SignUpJSONRequestBody defines body for SignUp for application/json ContentType.
 type SignUpJSONRequestBody = Credentials
 
-// CreateCategoryJSONRequestBody defines body for CreateCategory for application/json ContentType.
-type CreateCategoryJSONRequestBody = Category
+// UpsertCategoryJSONRequestBody defines body for UpsertCategory for application/json ContentType.
+type UpsertCategoryJSONRequestBody = Category
 
-// UpdateProductJSONRequestBody defines body for UpdateProduct for application/json ContentType.
-type UpdateProductJSONRequestBody = Product
+// UpsertProductJSONRequestBody defines body for UpsertProduct for application/json ContentType.
+type UpsertProductJSONRequestBody = Product
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody = Settings
@@ -293,22 +289,22 @@ type ServerInterface interface {
 	OauthSignIn(ctx *echo.Context, provider OAuthProvider) error
 	// ListCategories List the user's categories
 	// (GET /categories)
-	ListCategories(ctx *echo.Context, params ListCategoriesParams) error
+	ListCategories(ctx *echo.Context) error
 	// DeleteCategory Delete a category
-	// (DELETE /category/{id})
+	// (DELETE /categories/{id})
 	DeleteCategory(ctx *echo.Context, id Id, params DeleteCategoryParams) error
-	// CreateCategory Create or update a category
-	// (PUT /category/{id})
-	CreateCategory(ctx *echo.Context, id Id, params CreateCategoryParams) error
-	// DeleteProduct Delete a product
-	// (DELETE /product/{id})
-	DeleteProduct(ctx *echo.Context, id Id, params DeleteProductParams) error
-	// UpdateProduct Create or update a product
-	// (PUT /product/{id})
-	UpdateProduct(ctx *echo.Context, id Id, params UpdateProductParams) error
+	// UpsertCategory Create or update a category
+	// (PUT /categories/{id})
+	UpsertCategory(ctx *echo.Context, id Id, params UpsertCategoryParams) error
 	// ListProducts List the user's products
 	// (GET /products)
-	ListProducts(ctx *echo.Context, params ListProductsParams) error
+	ListProducts(ctx *echo.Context) error
+	// DeleteProduct Delete a product
+	// (DELETE /products/{id})
+	DeleteProduct(ctx *echo.Context, id Id, params DeleteProductParams) error
+	// UpsertProduct Create or update a product
+	// (PUT /products/{id})
+	UpsertProduct(ctx *echo.Context, id Id, params UpsertProductParams) error
 	// GetSettings Get settings
 	// (GET /settings)
 	GetSettings(ctx *echo.Context) error
@@ -480,24 +476,8 @@ func (w *ServerInterfaceWrapper) OauthSignIn(ctx *echo.Context) error {
 func (w *ServerInterfaceWrapper) ListCategories(ctx *echo.Context) error {
 	var err error
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListCategoriesParams
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
-	}
-
-	// ------------- Optional query parameter "offset" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
-	}
-
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListCategories(ctx, params)
+	err = w.Handler.ListCategories(ctx)
 	return err
 }
 
@@ -514,11 +494,22 @@ func (w *ServerInterfaceWrapper) DeleteCategory(ctx *echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteCategoryParams
-	// ------------- Optional query parameter "baseVersion" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseVersion", ctx.QueryParams(), &params.BaseVersion, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter baseVersion: %s", err))
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -526,8 +517,8 @@ func (w *ServerInterfaceWrapper) DeleteCategory(ctx *echo.Context) error {
 	return err
 }
 
-// CreateCategory converts echo context to params.
-func (w *ServerInterfaceWrapper) CreateCategory(ctx *echo.Context) error {
+// UpsertCategory converts echo context to params.
+func (w *ServerInterfaceWrapper) UpsertCategory(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id Id
@@ -538,16 +529,51 @@ func (w *ServerInterfaceWrapper) CreateCategory(ctx *echo.Context) error {
 	}
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateCategoryParams
-	// ------------- Optional query parameter "baseVersion" -------------
+	var params UpsertCategoryParams
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseVersion", ctx.QueryParams(), &params.BaseVersion, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter baseVersion: %s", err))
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
+	}
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-None-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-None-Match: %s", err))
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateCategory(ctx, id, params)
+	err = w.Handler.UpsertCategory(ctx, id, params)
+	return err
+}
+
+// ListProducts converts echo context to params.
+func (w *ServerInterfaceWrapper) ListProducts(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListProducts(ctx)
 	return err
 }
 
@@ -564,11 +590,22 @@ func (w *ServerInterfaceWrapper) DeleteProduct(ctx *echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteProductParams
-	// ------------- Optional query parameter "baseVersion" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseVersion", ctx.QueryParams(), &params.BaseVersion, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter baseVersion: %s", err))
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -576,8 +613,8 @@ func (w *ServerInterfaceWrapper) DeleteProduct(ctx *echo.Context) error {
 	return err
 }
 
-// UpdateProduct converts echo context to params.
-func (w *ServerInterfaceWrapper) UpdateProduct(ctx *echo.Context) error {
+// UpsertProduct converts echo context to params.
+func (w *ServerInterfaceWrapper) UpsertProduct(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id Id
@@ -588,41 +625,42 @@ func (w *ServerInterfaceWrapper) UpdateProduct(ctx *echo.Context) error {
 	}
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params UpdateProductParams
-	// ------------- Optional query parameter "baseVersion" -------------
+	var params UpsertProductParams
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseVersion", ctx.QueryParams(), &params.BaseVersion, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter baseVersion: %s", err))
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
+	}
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-None-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-None-Match: %s", err))
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateProduct(ctx, id, params)
-	return err
-}
-
-// ListProducts converts echo context to params.
-func (w *ServerInterfaceWrapper) ListProducts(ctx *echo.Context) error {
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListProductsParams
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
-	}
-
-	// ------------- Optional query parameter "offset" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListProducts(ctx, params)
+	err = w.Handler.UpsertProduct(ctx, id, params)
 	return err
 }
 
@@ -641,11 +679,22 @@ func (w *ServerInterfaceWrapper) PatchSettings(ctx *echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params PatchSettingsParams
-	// ------------- Optional query parameter "baseVersion" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseVersion", ctx.QueryParams(), &params.BaseVersion, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter baseVersion: %s", err))
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -707,11 +756,11 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/auth/:provider/sign-in", wrapper.OauthSignIn, options.OperationMiddlewares["oauthSignIn"]...)
 	router.GET(options.BaseURL+"/auth/:provider/callback", wrapper.OauthCallback, options.OperationMiddlewares["oauthCallback"]...)
 	router.GET(options.BaseURL+"/products", wrapper.ListProducts, options.OperationMiddlewares["listProducts"]...)
-	router.DELETE(options.BaseURL+"/product/:id", wrapper.DeleteProduct, options.OperationMiddlewares["deleteProduct"]...)
-	router.PUT(options.BaseURL+"/product/:id", wrapper.UpdateProduct, options.OperationMiddlewares["updateProduct"]...)
+	router.DELETE(options.BaseURL+"/products/:id", wrapper.DeleteProduct, options.OperationMiddlewares["deleteProduct"]...)
+	router.PUT(options.BaseURL+"/products/:id", wrapper.UpsertProduct, options.OperationMiddlewares["upsertProduct"]...)
 	router.GET(options.BaseURL+"/categories", wrapper.ListCategories, options.OperationMiddlewares["listCategories"]...)
-	router.DELETE(options.BaseURL+"/category/:id", wrapper.DeleteCategory, options.OperationMiddlewares["deleteCategory"]...)
-	router.PUT(options.BaseURL+"/category/:id", wrapper.CreateCategory, options.OperationMiddlewares["createCategory"]...)
+	router.DELETE(options.BaseURL+"/categories/:id", wrapper.DeleteCategory, options.OperationMiddlewares["deleteCategory"]...)
+	router.PUT(options.BaseURL+"/categories/:id", wrapper.UpsertCategory, options.OperationMiddlewares["upsertCategory"]...)
 	router.GET(options.BaseURL+"/settings", wrapper.GetSettings, options.OperationMiddlewares["getSettings"]...)
 	router.PATCH(options.BaseURL+"/settings", wrapper.PatchSettings, options.OperationMiddlewares["patchSettings"]...)
 
@@ -732,13 +781,22 @@ type BadRequestApplicationProblemPlusJSONResponse Error
 
 type ConflictApplicationProblemPlusJSONResponse Error
 
-type ForbiddenApplicationProblemPlusJSONResponse Error
-
 type InternalServerErrorApplicationProblemPlusJSONResponse Error
 
 type NotFoundApplicationProblemPlusJSONResponse Error
 
-type SettingsSuccessJSONResponse Settings
+type PreconditionFailedApplicationProblemPlusJSONResponse Error
+
+type PreconditionRequiredApplicationProblemPlusJSONResponse Error
+
+type SettingsSuccessResponseHeaders struct {
+	ETag *string
+}
+type SettingsSuccessJSONResponse struct {
+	Body Settings
+
+	Headers SettingsSuccessResponseHeaders
+}
 
 type TooManyRequestsResponseHeaders struct {
 	RetryAfter *int
@@ -1243,7 +1301,6 @@ func (response OauthSignIn500ApplicationProblemPlusJSONResponse) VisitOauthSignI
 }
 
 type ListCategoriesRequestObject struct {
-	Params ListCategoriesParams
 }
 
 type ListCategoriesResponseObject interface {
@@ -1332,6 +1389,22 @@ func (response DeleteCategory204Response) VisitDeleteCategoryResponse(w http.Res
 	return nil
 }
 
+type DeleteCategory400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCategory400ApplicationProblemPlusJSONResponse) VisitDeleteCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCategory401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
@@ -1348,22 +1421,6 @@ func (response DeleteCategory401ApplicationProblemPlusJSONResponse) VisitDeleteC
 	return err
 }
 
-type DeleteCategory404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteCategory404ApplicationProblemPlusJSONResponse) VisitDeleteCategoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.NotFoundApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type DeleteCategory409ApplicationProblemPlusJSONResponse struct {
 	ConflictApplicationProblemPlusJSONResponse
 }
@@ -1376,6 +1433,38 @@ func (response DeleteCategory409ApplicationProblemPlusJSONResponse) VisitDeleteC
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCategory412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCategory412ApplicationProblemPlusJSONResponse) VisitDeleteCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCategory428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCategory428ApplicationProblemPlusJSONResponse) VisitDeleteCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1415,35 +1504,69 @@ func (response DeleteCategory500ApplicationProblemPlusJSONResponse) VisitDeleteC
 	return err
 }
 
-type CreateCategoryRequestObject struct {
+type UpsertCategoryRequestObject struct {
 	Id     Id `json:"id"`
-	Params CreateCategoryParams
-	Body   *CreateCategoryJSONRequestBody
+	Params UpsertCategoryParams
+	Body   *UpsertCategoryJSONRequestBody
 }
 
-type CreateCategoryResponseObject interface {
-	VisitCreateCategoryResponse(w http.ResponseWriter) error
+type UpsertCategoryResponseObject interface {
+	VisitUpsertCategoryResponse(w http.ResponseWriter) error
 }
 
-type CreateCategory200JSONResponse Category
+type UpsertCategory200ResponseHeaders struct {
+	ETag *string
+}
 
-func (response CreateCategory200JSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+type UpsertCategory200JSONResponse struct {
+	Body    Category
+	Headers UpsertCategory200ResponseHeaders
+}
+
+func (response UpsertCategory200JSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type CreateCategory400ApplicationProblemPlusJSONResponse struct {
+type UpsertCategory201ResponseHeaders struct {
+	ETag *string
+}
+
+type UpsertCategory201JSONResponse struct {
+	Body    Category
+	Headers UpsertCategory201ResponseHeaders
+}
+
+func (response UpsertCategory201JSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertCategory400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response CreateCategory400ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+func (response UpsertCategory400ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
@@ -1455,11 +1578,11 @@ func (response CreateCategory400ApplicationProblemPlusJSONResponse) VisitCreateC
 	return err
 }
 
-type CreateCategory401ApplicationProblemPlusJSONResponse struct {
+type UpsertCategory401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response CreateCategory401ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+func (response UpsertCategory401ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
@@ -1471,43 +1594,11 @@ func (response CreateCategory401ApplicationProblemPlusJSONResponse) VisitCreateC
 	return err
 }
 
-type CreateCategory403ApplicationProblemPlusJSONResponse struct {
-	ForbiddenApplicationProblemPlusJSONResponse
-}
-
-func (response CreateCategory403ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.ForbiddenApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateCategory404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response CreateCategory404ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.NotFoundApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateCategory409ApplicationProblemPlusJSONResponse struct {
+type UpsertCategory409ApplicationProblemPlusJSONResponse struct {
 	ConflictApplicationProblemPlusJSONResponse
 }
 
-func (response CreateCategory409ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+func (response UpsertCategory409ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.ConflictApplicationProblemPlusJSONResponse); err != nil {
@@ -1519,11 +1610,43 @@ func (response CreateCategory409ApplicationProblemPlusJSONResponse) VisitCreateC
 	return err
 }
 
-type CreateCategory429ApplicationProblemPlusJSONResponse struct {
+type UpsertCategory412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response UpsertCategory412ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertCategory428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response UpsertCategory428ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertCategory429ApplicationProblemPlusJSONResponse struct {
 	TooManyRequestsApplicationProblemPlusJSONResponse
 }
 
-func (response CreateCategory429ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+func (response UpsertCategory429ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1538,11 +1661,83 @@ func (response CreateCategory429ApplicationProblemPlusJSONResponse) VisitCreateC
 	return err
 }
 
-type CreateCategory500ApplicationProblemPlusJSONResponse struct {
+type UpsertCategory500ApplicationProblemPlusJSONResponse struct {
 	InternalServerErrorApplicationProblemPlusJSONResponse
 }
 
-func (response CreateCategory500ApplicationProblemPlusJSONResponse) VisitCreateCategoryResponse(w http.ResponseWriter) error {
+func (response UpsertCategory500ApplicationProblemPlusJSONResponse) VisitUpsertCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProductsRequestObject struct {
+}
+
+type ListProductsResponseObject interface {
+	VisitListProductsResponse(w http.ResponseWriter) error
+}
+
+type ListProducts200JSONResponse ProductList
+
+func (response ListProducts200JSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProducts401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListProducts401ApplicationProblemPlusJSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProducts429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ListProducts429ApplicationProblemPlusJSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProducts500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListProducts500ApplicationProblemPlusJSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
@@ -1571,6 +1766,22 @@ func (response DeleteProduct204Response) VisitDeleteProductResponse(w http.Respo
 	return nil
 }
 
+type DeleteProduct400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProduct400ApplicationProblemPlusJSONResponse) VisitDeleteProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProduct401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
@@ -1587,34 +1798,34 @@ func (response DeleteProduct401ApplicationProblemPlusJSONResponse) VisitDeletePr
 	return err
 }
 
-type DeleteProduct404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
+type DeleteProduct412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteProduct404ApplicationProblemPlusJSONResponse) VisitDeleteProductResponse(w http.ResponseWriter) error {
+func (response DeleteProduct412ApplicationProblemPlusJSONResponse) VisitDeleteProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.NotFoundApplicationProblemPlusJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
+	w.WriteHeader(412)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type DeleteProduct409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
+type DeleteProduct428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteProduct409ApplicationProblemPlusJSONResponse) VisitDeleteProductResponse(w http.ResponseWriter) error {
+func (response DeleteProduct428ApplicationProblemPlusJSONResponse) VisitDeleteProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.ConflictApplicationProblemPlusJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
+	w.WriteHeader(428)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1654,35 +1865,69 @@ func (response DeleteProduct500ApplicationProblemPlusJSONResponse) VisitDeletePr
 	return err
 }
 
-type UpdateProductRequestObject struct {
+type UpsertProductRequestObject struct {
 	Id     Id `json:"id"`
-	Params UpdateProductParams
-	Body   *UpdateProductJSONRequestBody
+	Params UpsertProductParams
+	Body   *UpsertProductJSONRequestBody
 }
 
-type UpdateProductResponseObject interface {
-	VisitUpdateProductResponse(w http.ResponseWriter) error
+type UpsertProductResponseObject interface {
+	VisitUpsertProductResponse(w http.ResponseWriter) error
 }
 
-type UpdateProduct200JSONResponse Product
+type UpsertProduct200ResponseHeaders struct {
+	ETag *string
+}
 
-func (response UpdateProduct200JSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+type UpsertProduct200JSONResponse struct {
+	Body    Product
+	Headers UpsertProduct200ResponseHeaders
+}
+
+func (response UpsertProduct200JSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type UpdateProduct400ApplicationProblemPlusJSONResponse struct {
+type UpsertProduct201ResponseHeaders struct {
+	ETag *string
+}
+
+type UpsertProduct201JSONResponse struct {
+	Body    Product
+	Headers UpsertProduct201ResponseHeaders
+}
+
+func (response UpsertProduct201JSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertProduct400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct400ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+func (response UpsertProduct400ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
@@ -1694,11 +1939,11 @@ func (response UpdateProduct400ApplicationProblemPlusJSONResponse) VisitUpdatePr
 	return err
 }
 
-type UpdateProduct401ApplicationProblemPlusJSONResponse struct {
+type UpsertProduct401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct401ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+func (response UpsertProduct401ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
@@ -1710,59 +1955,43 @@ func (response UpdateProduct401ApplicationProblemPlusJSONResponse) VisitUpdatePr
 	return err
 }
 
-type UpdateProduct403ApplicationProblemPlusJSONResponse struct {
-	ForbiddenApplicationProblemPlusJSONResponse
+type UpsertProduct412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct403ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+func (response UpsertProduct412ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.ForbiddenApplicationProblemPlusJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
+	w.WriteHeader(412)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type UpdateProduct404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
+type UpsertProduct428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct404ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+func (response UpsertProduct428ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.NotFoundApplicationProblemPlusJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
+	w.WriteHeader(428)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type UpdateProduct409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
-}
-
-func (response UpdateProduct409ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.ConflictApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateProduct429ApplicationProblemPlusJSONResponse struct {
+type UpsertProduct429ApplicationProblemPlusJSONResponse struct {
 	TooManyRequestsApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct429ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
+func (response UpsertProduct429ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1777,65 +2006,11 @@ func (response UpdateProduct429ApplicationProblemPlusJSONResponse) VisitUpdatePr
 	return err
 }
 
-type UpdateProduct500ApplicationProblemPlusJSONResponse struct {
+type UpsertProduct500ApplicationProblemPlusJSONResponse struct {
 	InternalServerErrorApplicationProblemPlusJSONResponse
 }
 
-func (response UpdateProduct500ApplicationProblemPlusJSONResponse) VisitUpdateProductResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListProductsRequestObject struct {
-	Params ListProductsParams
-}
-
-type ListProductsResponseObject interface {
-	VisitListProductsResponse(w http.ResponseWriter) error
-}
-
-type ListProducts200JSONResponse ProductList
-
-func (response ListProducts200JSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListProducts401ApplicationProblemPlusJSONResponse struct {
-	UnauthorizedApplicationProblemPlusJSONResponse
-}
-
-func (response ListProducts401ApplicationProblemPlusJSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListProducts500ApplicationProblemPlusJSONResponse struct {
-	InternalServerErrorApplicationProblemPlusJSONResponse
-}
-
-func (response ListProducts500ApplicationProblemPlusJSONResponse) VisitListProductsResponse(w http.ResponseWriter) error {
+func (response UpsertProduct500ApplicationProblemPlusJSONResponse) VisitUpsertProductResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
@@ -1859,10 +2034,13 @@ type GetSettings200JSONResponse struct{ SettingsSuccessJSONResponse }
 func (response GetSettings200JSONResponse) VisitGetSettingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.SettingsSuccessJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
@@ -1933,10 +2111,13 @@ type PatchSettings200JSONResponse struct{ SettingsSuccessJSONResponse }
 func (response PatchSettings200JSONResponse) VisitPatchSettingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.SettingsSuccessJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
@@ -1974,18 +2155,34 @@ func (response PatchSettings401ApplicationProblemPlusJSONResponse) VisitPatchSet
 	return err
 }
 
-type PatchSettings409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
+type PatchSettings412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
 }
 
-func (response PatchSettings409ApplicationProblemPlusJSONResponse) VisitPatchSettingsResponse(w http.ResponseWriter) error {
+func (response PatchSettings412ApplicationProblemPlusJSONResponse) VisitPatchSettingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.ConflictApplicationProblemPlusJSONResponse); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchSettings428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response PatchSettings428ApplicationProblemPlusJSONResponse) VisitPatchSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2049,20 +2246,20 @@ type StrictServerInterface interface {
 	// (GET /categories)
 	ListCategories(ctx context.Context, request ListCategoriesRequestObject) (ListCategoriesResponseObject, error)
 	// DeleteCategory Delete a category
-	// (DELETE /category/{id})
+	// (DELETE /categories/{id})
 	DeleteCategory(ctx context.Context, request DeleteCategoryRequestObject) (DeleteCategoryResponseObject, error)
-	// CreateCategory Create or update a category
-	// (PUT /category/{id})
-	CreateCategory(ctx context.Context, request CreateCategoryRequestObject) (CreateCategoryResponseObject, error)
-	// DeleteProduct Delete a product
-	// (DELETE /product/{id})
-	DeleteProduct(ctx context.Context, request DeleteProductRequestObject) (DeleteProductResponseObject, error)
-	// UpdateProduct Create or update a product
-	// (PUT /product/{id})
-	UpdateProduct(ctx context.Context, request UpdateProductRequestObject) (UpdateProductResponseObject, error)
+	// UpsertCategory Create or update a category
+	// (PUT /categories/{id})
+	UpsertCategory(ctx context.Context, request UpsertCategoryRequestObject) (UpsertCategoryResponseObject, error)
 	// ListProducts List the user's products
 	// (GET /products)
 	ListProducts(ctx context.Context, request ListProductsRequestObject) (ListProductsResponseObject, error)
+	// DeleteProduct Delete a product
+	// (DELETE /products/{id})
+	DeleteProduct(ctx context.Context, request DeleteProductRequestObject) (DeleteProductResponseObject, error)
+	// UpsertProduct Create or update a product
+	// (PUT /products/{id})
+	UpsertProduct(ctx context.Context, request UpsertProductRequestObject) (UpsertProductResponseObject, error)
 	// GetSettings Get settings
 	// (GET /settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
@@ -2263,10 +2460,8 @@ func (sh *strictHandler) OauthSignIn(ctx *echo.Context, provider OAuthProvider) 
 }
 
 // ListCategories operation middleware
-func (sh *strictHandler) ListCategories(ctx *echo.Context, params ListCategoriesParams) error {
+func (sh *strictHandler) ListCategories(ctx *echo.Context) error {
 	var request ListCategoriesRequestObject
-
-	request.Params = params
 
 	handler := func(ctx *echo.Context, request any) (any, error) {
 		return sh.ssi.ListCategories(ctx.Request().Context(), request.(ListCategoriesRequestObject))
@@ -2313,14 +2508,14 @@ func (sh *strictHandler) DeleteCategory(ctx *echo.Context, id Id, params DeleteC
 	return nil
 }
 
-// CreateCategory operation middleware
-func (sh *strictHandler) CreateCategory(ctx *echo.Context, id Id, params CreateCategoryParams) error {
-	var request CreateCategoryRequestObject
+// UpsertCategory operation middleware
+func (sh *strictHandler) UpsertCategory(ctx *echo.Context, id Id, params UpsertCategoryParams) error {
+	var request UpsertCategoryRequestObject
 
 	request.Id = id
 	request.Params = params
 
-	var body CreateCategoryJSONRequestBody
+	var body UpsertCategoryJSONRequestBody
 	var err error
 	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
 		// Bind only the request body, so that path and query parameters
@@ -2337,18 +2532,41 @@ func (sh *strictHandler) CreateCategory(ctx *echo.Context, id Id, params CreateC
 	request.Body = &body
 
 	handler := func(ctx *echo.Context, request any) (any, error) {
-		return sh.ssi.CreateCategory(ctx.Request().Context(), request.(CreateCategoryRequestObject))
+		return sh.ssi.UpsertCategory(ctx.Request().Context(), request.(UpsertCategoryRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateCategory")
+		handler = middleware(handler, "UpsertCategory")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		return err
-	} else if validResponse, ok := response.(CreateCategoryResponseObject); ok {
-		return validResponse.VisitCreateCategoryResponse(ctx.Response())
+	} else if validResponse, ok := response.(UpsertCategoryResponseObject); ok {
+		return validResponse.VisitUpsertCategoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListProducts operation middleware
+func (sh *strictHandler) ListProducts(ctx *echo.Context) error {
+	var request ListProductsRequestObject
+
+	handler := func(ctx *echo.Context, request any) (any, error) {
+		return sh.ssi.ListProducts(ctx.Request().Context(), request.(ListProductsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProducts")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListProductsResponseObject); ok {
+		return validResponse.VisitListProductsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -2381,14 +2599,14 @@ func (sh *strictHandler) DeleteProduct(ctx *echo.Context, id Id, params DeletePr
 	return nil
 }
 
-// UpdateProduct operation middleware
-func (sh *strictHandler) UpdateProduct(ctx *echo.Context, id Id, params UpdateProductParams) error {
-	var request UpdateProductRequestObject
+// UpsertProduct operation middleware
+func (sh *strictHandler) UpsertProduct(ctx *echo.Context, id Id, params UpsertProductParams) error {
+	var request UpsertProductRequestObject
 
 	request.Id = id
 	request.Params = params
 
-	var body UpdateProductJSONRequestBody
+	var body UpsertProductJSONRequestBody
 	var err error
 	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
 		// Bind only the request body, so that path and query parameters
@@ -2405,43 +2623,18 @@ func (sh *strictHandler) UpdateProduct(ctx *echo.Context, id Id, params UpdatePr
 	request.Body = &body
 
 	handler := func(ctx *echo.Context, request any) (any, error) {
-		return sh.ssi.UpdateProduct(ctx.Request().Context(), request.(UpdateProductRequestObject))
+		return sh.ssi.UpsertProduct(ctx.Request().Context(), request.(UpsertProductRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateProduct")
+		handler = middleware(handler, "UpsertProduct")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		return err
-	} else if validResponse, ok := response.(UpdateProductResponseObject); ok {
-		return validResponse.VisitUpdateProductResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// ListProducts operation middleware
-func (sh *strictHandler) ListProducts(ctx *echo.Context, params ListProductsParams) error {
-	var request ListProductsRequestObject
-
-	request.Params = params
-
-	handler := func(ctx *echo.Context, request any) (any, error) {
-		return sh.ssi.ListProducts(ctx.Request().Context(), request.(ListProductsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListProducts")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(ListProductsResponseObject); ok {
-		return validResponse.VisitListProductsResponse(ctx.Response())
+	} else if validResponse, ok := response.(UpsertProductResponseObject); ok {
+		return validResponse.VisitUpsertProductResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -2517,66 +2710,73 @@ func (sh *strictHandler) PatchSettings(ctx *echo.Context, params PatchSettingsPa
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7Fzvbhu3ln8VYlqgye5Ylh0n28gIsI7TpMo6iWE73QJeb0wPz0isZ8gJyZGtGgK2BRZFsdgXuN/uGwQF",
-	"glvc3ua+gvxGF/wzI85oJMuJ4ya9/RJYMyTP4Tm/84eHZ3IWRDzNOAOmZNA5C/qACQjz52YCWADZgViA",
-	"7O/xY2CbnB9T0C8JyEjQTFHOgk7wxWlGBUik+oCEHY8iOzYMZNSHFOtJcIrTLIGgE7hBL5Re9d46+lKp",
-	"7BlLhutoF6JcwDraxSnsUgX3dpWgkVpH21j17y3jjC4PVpZxrvrr6Ak+Xdrowb12EAZqmOmFpRKU9YLR",
-	"KAyebeSqvwdpNovr3T4XaimhAyCOW4lucL30C6mwghDZHwMQNKYgbqJcAkGKowFOKMEKzIYNHRThJDnC",
-	"0XEL7QJTCEukTjiSkGGhB+6CWrJ8ICfi1n+xGcLxWLiHj6KV1VtzBbSFTxukszzEjMDpREh32s1iWkS/",
-	"T+Gk1KtR2UJqXYD3BZS7evvuaruR91EYaOmmoBxi72MJX4GQhun6HtwLo7IooVpJR1jrkyqJoj5mPUCc",
-	"rSOeUoViLhBGDAYgluSQRUBQJjjJIxWEAdXLvcxBDIMwYDjVTB15pH3ZxFykWAWdgDJ1Zy0Ig5QymuZp",
-	"0FkpN0SZgh4Io40u0bMMhQyr/oQAJUEYCHiZUwEk6CiRQyOdPDcjp/W8RVOqtrW8pmUz/tP4zfiX8c/n",
-	"P4xfn393/v34p/EbpP8Z/2X80/n/jF+d/zh+NX49/tv5/53/Lzr///Ev+sf49fjX8+/Hb8Y/zRBKoklW",
-	"xEEgxnmigs5qux0GKT61srjdbl8oGWNm24IPKAExQ0hZ8XqeqD4VEAed4JPliedbtm/lcoXIU72oIR3H",
-	"EmbK7s9aEuc/ammMfx6/RuM359+j8a/jV+c/jF+Nfxm/Quffjf8+/vn8u/Ffx69miIobEs2ymi2pdoOk",
-	"RnrvMuNMgjEKvaPdPIpAmp8RZwqY0n/iLEtohPU+lr+R1mYWE5NxFjuOiqVZFcpzCQJtCsAKNBq9qDJx",
-	"hLOIuMHLDY7JULqPySOs4AQP5+wnE/wogfRfL7evL4Tgomk/1scX8EJUopzhAaYJPkoAcYEEqFwwIAgz",
-	"BHYVw+kOvMxBquvjtMtMcELCEkZHnAw1gy5kaQ8YY5oA0QxuchYnNLpG9nZA8lxEgHAiAJMhglMqldQc",
-	"ei4UERrHICSKBU+Nx5YgBiDQwL7XvD/k4ogSAuz6mDeoJhwkYlyhPh4AwsawkKC9vpI6NTDhxXLT0mx2",
-	"mQLBcLJrNmCXvkYwWOKF+EpkPuXqIc8ZuUbZsWPGTxiqWpLmZReUoqwnr9pJFevO1KQsB4TBHudPMBs6",
-	"c5XXaBBYATKBEsFpBEDqDnMHlBgubcTKRr0JuWnPPwqD50xnT1zQb+EalfuESklZL0TUeR8uEJgzAUGR",
-	"AAJMUZxIE0zdYuaEgRX0uBhOB9XiDeJxkXjJVhAGmeAZCEVtaKNkgdSnCLF+nvoAUxN8U3y6Bayn+kFn",
-	"xQXW8nfDQoNJbunndbdWa3md9mw64S1yj4ZsZpKe7NvUzjB5UI7lR99ApIyPdqLYojaM1ESgIK3+MU+B",
-	"pcBHJSEsBB5Os2RWa2THU+cUN5BimlTEY59UJL16e61BthmW8oSLqkbLh5UF/m21oqnPm7JdfzMFD+Vq",
-	"TfsqPXN1RxEnDeehJzjqUwZLWtEmAzCOFZnBoYczxtWL2PjZhh2nICXuNaz+ZZ5iNlnbf+kvnksQJhDN",
-	"oFCTgmOuoNokgy4j2kE0yyFxj7FSIDSb//3Jfnvp7sbSQ7wUH5zdGX3auEl8+gAP5XyTaYcByxOTSy1o",
-	"Mpadpj1MZ/Aal0yT2Q/smTg4aGB02x3vprTxkEJCpHZEuHBFSPWx8g+SEWYIiDnr1MTmDK67mKeqUD6r",
-	"GE273W6YYJ2s3FCV5QlW0LT8gv6SprgHW5QdT/Gw9nmjilke40jlAsiCjBQeubrBC/0vz4AtTONljpmi",
-	"alijs9IoR9mHJN6iMZg4+ywDpl9MYUFD2ei9AIJU+kmPc4KwnomoQidYIstpEDaAvjjJ3bpz+4JD7zUE",
-	"HB9BTdbkrOIqYo9b6h1CT5nQdc7mpnN1I+xj+ZQrGrvkR3rJ0xHnCWBznqCF81t8SxN/ObWpMGAeyT2a",
-	"Qs157reXVg+0Az3o7LeXbk/92ehNFU3hW87A28F7yU6mRF898E8hwZ6CzKBqogXDx/2jRxF9Rh93n3/b",
-	"XXlKu7LLdm5Hm9073ePs6682H99ttVrBbNfWbSjlbRhythKJEhqDlguiDEmIOCPSD5N32+0myzJz94ZZ",
-	"JTzcByxANISHGkT97fpL+UxPA1i7GYhyQdVwVwPIis7S1EFL/zoyvx4W6nv8n3tFScig1bydCKuvVGbT",
-	"ccpiXqT72EYxl4sFPIHeMf589da/9/STVsTTSdnpmItvAI6nYk+wm2Kh0ENBSQ8QzjKka9vACNrY7moG",
-	"qEqgPsy+KmEYtFsrrZXCb+OMBp3gVmul1TapmOqb7dtadcJ7PLcehsuGGLwDA35cu1+w2i8LBLaAjzAj",
-	"KNIXF9J72kJdAmnGFTDVcaUaiVbbawgGwBCNzVi7IJVlacIdZmyhXsPd2LIO5cGWZbhagN53Ncny5sMJ",
-	"uVIVr5T46jA7qNXuVttr08LY4r0eEGTpv1VlbfbNjgHT7XZ71gold8tNdQ0f4kFn/yAMZJ6mWAwt145l",
-	"hbUL3w+05oMDPceCwInJR0FV6I7ft5T67ILwxVpYQB5+mXUUBmvtlYvnVA7retLq3Ysn1SsV70thO4Wd",
-	"laaRYSrm6E/SHluibJ4VW8PDrCibORsuypOVWkHd5HZpj3ULRYJU9zkZXlmtaLNSpBjV0TJ6V0Q0159o",
-	"jyHKLFwWWNArJ/8uELZr96/xYKrAlPVQLuFCjOXZbIzZOwdpLu9OzGomJIhm6DWC7Hn2oYBs5QpAVlzC",
-	"vC3IFsBLeYvw4bmwHpUKhIeGOdg6K4rSo+XiMl+z1IMGmN0X/ERLl+EB7dlbFWAk49QUA5IECDoaet0B",
-	"xdKhKdi4VzjLWugr21wgkWs5gFN7F13kLwRCFFNGzBVJ5NCtX5XYlqCaOi9aaM/S0O+Y4UqiSqRFiqMe",
-	"qLpRNOU7z/S8zUIqUwG4SW2TIdVb1WAUnjVegboC1ey4PGOeEdylAnw41QkCpVLKO74TLbVS0AQYBeLk",
-	"NOMO196u/FaEX1TrhBeLsZ4weW0nl5XmnPWK5pl3ysButVeb0glCBUTKHE2KqzdjUxvJiS7LeOcAy8u/",
-	"ONOQLfSMIZk70E+Zjj4ESGMYpFi0yX7MKvoyNReAGL9gEaMzZLdobggxZRIdGt0ddtCh1fALq+9DdMND",
-	"QJRQVmLgZogOzdnuRSFPN7gEEKHEuBkb9Ex41eMnExU+BnaIbmBL4IQqneZRacfVrmZvWn/gHTS2uA1/",
-	"1cg3KSsK2liMfveb/7cKYGsXTylvQ3+TAKbnri60r6LtYV7Mq3UqiMJIFBY6ki0U/rxM/tLR7wbPgOky",
-	"6IBidEIZ4SetxAHGRr8YVNRf/vrLnZst9AgYCBPSjN8xxrL9H5tfoMJthEgq7loLU1Pi8Zr2isayBbv3",
-	"ZMQz279X37HLEa2ovPDqnEox7jOJinTa7jrDPZgZLssDyzsFy8u5wkUYvmZjrrdhjkYfh1nOO7goLBRy",
-	"VmLdJ57qbGi0NHcf5MqmPZhzStZ6jPMkQVEuBDDlLITHJTw/k2iyXgs9gAQUEO8ZwiYwKURZlOQEiM0J",
-	"XTMItTRcP45eV+Sq33EXGRIY0ZGKKoky93clM7U3XwKyBEcgzTht5wmKeDb0YkpCpQrRMUCml+DGXCcc",
-	"mps0qWiS2H6aGqnG2huVanMix8val9cHOQovHO23/s0qDF3N4dC/5m9osdh0KPBk50HhIysITKqCVKpm",
-	"PHv24z2sWNFw+YySkbUgDf1pW/LLvvVyb7GIX/ElzoS4sL2/NgXSdtON0aHXoHaoZ2VYStPxRy7qVwun",
-	"KB5DZlPDtfZd/bvoH2wCvDXsAiCXBnyXLAJ0v3d6sTr0Xm1LTnhvD8VLx4SPozhRgt3qEeFSarMwHgZZ",
-	"ruahGeWZBKHWDawo0dLvuUyqLDw4B33j+fPug5shktwj7AoJBPE41mcL08BwBEjqGQlWk6qZ0IdPiWNI",
-	"hi1bS6Ks17FN8hWDaKHnGXFvtWEYHg4d/g9RgqVCAiIwiVvNTIx5UVVYkUkT+yb4SHQiqFLAFrUVw+L1",
-	"28p7KBYWW1i8HP0e6M7oytMtDhIP3qGs+Fb+4dbFkyZdwf8MHsWiXYerPDPfI13sW3T8dN0r7xQ+3RrX",
-	"Fz09gpcPntvlxzsfTuz0NvRH6Fw0dE6+wirQ7Z6817hZqOp3GzYNE9duJVcfNYsdXHPQrJCdbel/hM0P",
-	"NmzO9StezLyiuk35TUNZtSmefKg1m5K/t6zYbBfy+53Ua/zO2DnlmlJsV1GseU9Fl2yimhngl17n7Vzw",
-	"57VG3CoOHoHanby7fEdN/Uuxj7To9QiUL6NC5uUjk8hgFfUb2lucNVfkvF75dNJEehv4TPRPc6lQqpez",
-	"PsAB06UYrSklbeuhnpouZ63XEeSrH/ZdQadWI66uKzp/XKHToOMC9NauTqo9zvsHGhY2nFlENTvOPpcq",
-	"CINcJEEncP8zhEGUI9j4CYCWLTDlYGXgX7n/mjQn6MfBdD9GEaXsrSPRF46eo4xNn3PlvxswoxsW2qyU",
-	"6T0P66Z6Z/JR2LgXT8ZuTvlkdDD6xwA=",
+	"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",
+	"nN383wA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addIndicator = `-- name: AddIndicator :exec
@@ -39,7 +38,7 @@ UPDATE products SET category_id=NULL,version=version+1,updated_at=now() WHERE us
 
 type ClearCategoryReferencesParams struct {
 	UserID     uuid.UUID
-	CategoryID pgtype.UUID
+	CategoryID uuid.UUID
 }
 
 func (q *Queries) ClearCategoryReferences(ctx context.Context, arg ClearCategoryReferencesParams) error {
@@ -56,34 +55,6 @@ func (q *Queries) ClearIndicators(ctx context.Context, userID uuid.UUID) error {
 	return err
 }
 
-const deleteCategoryDocument = `-- name: DeleteCategoryDocument :exec
-DELETE FROM categories WHERE id=$1 AND user_id=$2
-`
-
-type DeleteCategoryDocumentParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) DeleteCategoryDocument(ctx context.Context, arg DeleteCategoryDocumentParams) error {
-	_, err := q.db.Exec(ctx, deleteCategoryDocument, arg.ID, arg.UserID)
-	return err
-}
-
-const deleteProductDocument = `-- name: DeleteProductDocument :exec
-DELETE FROM products WHERE id=$1 AND user_id=$2
-`
-
-type DeleteProductDocumentParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) DeleteProductDocument(ctx context.Context, arg DeleteProductDocumentParams) error {
-	_, err := q.db.Exec(ctx, deleteProductDocument, arg.ID, arg.UserID)
-	return err
-}
-
 const ensureSettings = `-- name: EnsureSettings :exec
 INSERT INTO settings(user_id) VALUES($1) ON CONFLICT DO NOTHING
 `
@@ -91,38 +62,6 @@ INSERT INTO settings(user_id) VALUES($1) ON CONFLICT DO NOTHING
 func (q *Queries) EnsureSettings(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, ensureSettings, userID)
 	return err
-}
-
-const findCategoryDocument = `-- name: FindCategoryDocument :one
-SELECT to_jsonb(t) FROM categories t WHERE id=$1 AND user_id=$2
-`
-
-type FindCategoryDocumentParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) FindCategoryDocument(ctx context.Context, arg FindCategoryDocumentParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, findCategoryDocument, arg.ID, arg.UserID)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
-const findProductDocument = `-- name: FindProductDocument :one
-SELECT to_jsonb(t) FROM products t WHERE id=$1 AND user_id=$2
-`
-
-type FindProductDocumentParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) FindProductDocument(ctx context.Context, arg FindProductDocumentParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, findProductDocument, arg.ID, arg.UserID)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
 }
 
 const getSettingsDocument = `-- name: GetSettingsDocument :one
@@ -134,103 +73,6 @@ func (q *Queries) GetSettingsDocument(ctx context.Context, userID uuid.UUID) (in
 	var column_1 interface{}
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const listCategoryDocuments = `-- name: ListCategoryDocuments :many
-SELECT to_jsonb(t) FROM categories t WHERE user_id=$1 ORDER BY id LIMIT $2 OFFSET $3
-`
-
-type ListCategoryDocumentsParams struct {
-	UserID uuid.UUID
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) ListCategoryDocuments(ctx context.Context, arg ListCategoryDocumentsParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listCategoryDocuments, arg.UserID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items [][]byte
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listProductDocuments = `-- name: ListProductDocuments :many
-SELECT to_jsonb(t) FROM products t WHERE user_id=$1 ORDER BY id LIMIT $2 OFFSET $3
-`
-
-type ListProductDocumentsParams struct {
-	UserID uuid.UUID
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) ListProductDocuments(ctx context.Context, arg ListProductDocumentsParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listProductDocuments, arg.UserID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items [][]byte
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const lockFridgeOwner = `-- name: LockFridgeOwner :exec
-SELECT id FROM users WHERE id = $1 FOR UPDATE
-`
-
-func (q *Queries) LockFridgeOwner(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, lockFridgeOwner, id)
-	return err
-}
-
-const saveCategoryDocument = `-- name: SaveCategoryDocument :one
-INSERT INTO categories (id,user_id,name,version)
-SELECT id,user_id,name,version FROM jsonb_populate_record(NULL::categories, $1::jsonb)
-ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,version=EXCLUDED.version WHERE categories.user_id=EXCLUDED.user_id
-RETURNING to_jsonb(categories.*)
-`
-
-func (q *Queries) SaveCategoryDocument(ctx context.Context, document []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, saveCategoryDocument, document)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
-const saveProductDocument = `-- name: SaveProductDocument :one
-INSERT INTO products (id,user_id,name,category_id,description,quantity,image_link,manufactured_at,expires_at,opened_at,shelf_life_after_opening,version)
-SELECT id,user_id,name,category_id,description,quantity,image_link,manufactured_at,expires_at,opened_at,shelf_life_after_opening,version FROM jsonb_populate_record(NULL::products, $1::jsonb)
-ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,category_id=EXCLUDED.category_id,description=EXCLUDED.description,quantity=EXCLUDED.quantity,image_link=EXCLUDED.image_link,manufactured_at=EXCLUDED.manufactured_at,expires_at=EXCLUDED.expires_at,opened_at=EXCLUDED.opened_at,shelf_life_after_opening=EXCLUDED.shelf_life_after_opening,version=EXCLUDED.version,updated_at=now() WHERE products.user_id=EXCLUDED.user_id
-RETURNING to_jsonb(products.*)
-`
-
-func (q *Queries) SaveProductDocument(ctx context.Context, document []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, saveProductDocument, document)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
 }
 
 const saveSettingsDocument = `-- name: SaveSettingsDocument :one

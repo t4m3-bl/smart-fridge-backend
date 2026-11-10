@@ -8,7 +8,7 @@ import (
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
-	"smart-fridge-backend/internal/transport/http/cookie"
+	"smart-fridge-backend/internal/transport/http/utils/cookie"
 	"smart-fridge-backend/internal/usecase/service"
 
 	"github.com/labstack/echo/v5"

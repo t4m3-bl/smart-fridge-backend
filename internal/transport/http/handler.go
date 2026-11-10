@@ -12,20 +12,20 @@ var _ api.StrictServerInterface = (*Handler)(nil)
 
 type Handler struct {
 	*controllers.AuthController
-	*controllers.SettingController
+	*controllers.SettingsController
 	*controllers.ProductController
 	*controllers.CategoryController
 }
 
 func NewHandler(
 	auth *controllers.AuthController,
-	setting *controllers.SettingController,
+	setting *controllers.SettingsController,
 	product *controllers.ProductController,
 	category *controllers.CategoryController,
 ) *Handler {
 	return &Handler{
 		AuthController:     auth,
-		SettingController:  setting,
+		SettingsController: setting,
 		ProductController:  product,
 		CategoryController: category,
 	}

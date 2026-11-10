@@ -6,7 +6,7 @@ info:
   contact:
     name: korjeek
     email: olegka823@gmail.com
-  version: 0.1.1
+  version: 0.2.0
 
 servers:
   - url: /api/v1
@@ -41,16 +41,15 @@ paths:
             schema:
               $ref: "#/components/schemas/Credentials"
       responses:
-        201:
-          description: User Created
+        "201":
           $ref: "#/components/responses/AuthSuccess"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/sign-in:
@@ -68,16 +67,15 @@ paths:
             schema:
               $ref: "#/components/schemas/Credentials"
       responses:
-        200:
-          description: User sign in
+        "200":
           $ref: "#/components/responses/AuthSuccess"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/refresh:
@@ -94,13 +92,13 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           $ref: "#/components/responses/AuthSuccess"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/logout:
@@ -120,12 +118,12 @@ paths:
           schema:
             type: string
       responses:
-        204:
+        "204":
           description: Logged out
           headers:
             Set-Cookie:
               $ref: "#/components/headers/ClearedRefreshTokenCookie"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/{provider}/sign-in:
@@ -143,7 +141,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OAuthProvider"
       responses:
-        302:
+        "302":
           description: Redirect to the provider's authorization page
           headers:
             Location:
@@ -152,11 +150,11 @@ paths:
                 format: uri
             Set-Cookie:
               $ref: "#/components/headers/OAuthTempCookie"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/{provider}/callback:
@@ -205,7 +203,7 @@ paths:
           schema:
             type: string
       responses:
-        302:
+        "302":
           description: >
             Redirect back to the app. Always clears the oauth_* cookies.
             On success the refresh cookie is set and the app calls /auth/refresh.
@@ -220,15 +218,15 @@ paths:
                 format: uri
             Set-Cookie:
               $ref: "#/components/headers/RefreshTokenCookie"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
-        502:
+        "502":
           $ref: "#/components/responses/BadGateway"
 
   /products:
@@ -237,40 +235,43 @@ paths:
         - products
       summary: List the user's products
       description: >
-        Returns the full current state of the user's products. Deleted products are not
-        included. The server is the source of truth: after sending its pending changes the
-        client replaces its local copy with this list, keeping only products that still
-        have pending changes.
+        Returns the full current state of the user's products, each with its `version`.
+        Deleted products are not included. The server is the source of truth: after
+        sending its pending changes the client replaces its local copy with this list,
+        keeping only products that still have pending changes.
       operationId: listProducts
-      parameters:
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/OffsetParam'
       responses:
-        200:
+        "200":
           description: Current products of the user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductList"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        500:
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /product/{id}:
+  /products/{id}:
     put:
       tags:
         - products
       summary: Create or update a product
       description: >
-        Idempotent upsert; the id is generated by the client (UUID), so a product
-        created offline can be sent later and retried safely. Creating: omit `baseVersion`.
-        Updating: pass the `version` last received from the server. If it differs,
-        nothing is written and 409 is returned.
-      operationId: updateProduct
+        The id is generated by the client (UUID), so a product created offline can be
+        sent later. Exactly one precondition is required.
+        Create: `If-None-Match: *` -> 201; 412 if the id is already taken.
+        Update: `If-Match: "<version>"` with the version last received from the server
+        -> 200; 412 if the product does not exist or its version differs, nothing is written.
+        Neither header -> 428. Both headers -> 400.
+        The new version is returned in the `ETag` header and in `version`.
+      operationId: upsertProduct
       parameters:
         - $ref: "#/components/parameters/Id"
-        - $ref: "#/components/parameters/BaseVersion"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IfNoneMatch"
       requestBody:
         required: true
         content:
@@ -278,25 +279,35 @@ paths:
             schema:
               $ref: "#/components/schemas/Product"
       responses:
-        200:
-          description: The product was saved
+        "200":
+          description: The product was updated
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Product"
-        400:
+        "201":
+          description: The product was created
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
-          $ref: "#/components/responses/Conflict"
-        429:
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
     delete:
@@ -304,25 +315,97 @@ paths:
         - products
       summary: Delete a product
       description: >
-        Idempotent: 204 even if the product is already deleted or never existed.
-        If `baseVersion` is passed and differs from the server version, the product
-        is kept and 409 is returned.
+        Requires `If-Match: "<version>"`. 412 if the product does not exist (for example
+        it was already deleted on another device) or its version differs; in that case
+        nothing is deleted and the client refetches the list. Missing header -> 428.
       operationId: deleteProduct
       parameters:
         - $ref: "#/components/parameters/Id"
-        - $ref: "#/components/parameters/BaseVersion"
+        - $ref: "#/components/parameters/IfMatch"
       responses:
-        204:
+        "204":
           description: The product is deleted
-        401:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
-          $ref: "#/components/responses/Conflict"
-        429:
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /products/{id}/image:
+    post:
+      tags:
+        - products
+      summary: Upload an image for a product
+      description: >
+        Uploads a binary image file for the product. Updates the product's `imageLink`
+        internally. Requires `If-Match: "<version>"` of the product. 
+        Returns the new version of the product in the `ETag` header.
+      operationId: uploadProductImage
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: The image file (png, jpeg, etc.)
+      responses:
+        "200":
+          description: Image uploaded successfully. Returns the new product version.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags:
+        - products
+      summary: Remove the image from a product
+      description: >
+        Deletes the product's image from storage and clears `imageLink` in the DB.
+        Requires `If-Match: "<version>"`. Returns the new version of the product 
+        in the `ETag` header.
+      operationId: deleteProductImage
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Image deleted successfully. Returns the new product version.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /categories:
@@ -331,42 +414,39 @@ paths:
         - categories
       summary: List the user's categories
       description: >
-        Returns the full current state of the user's categories. Deleted categories are not
-        included. The server is the source of truth: after sending its pending changes the
-        client replaces its local copy with this list, keeping only categories that still
-        have pending changes.
+        Returns the full current state of the user's categories, each with its `version`.
+        Deleted categories are not included. The server is the source of truth: after
+        sending its pending changes the client replaces its local copy with this list,
+        keeping only categories that still have pending changes.
       operationId: listCategories
-      parameters:
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/OffsetParam'
       responses:
-        200:
+        "200":
           description: Current categories of the user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CategoryList"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /category/{id}:
+  /categories/{id}:
     put:
       tags:
         - categories
       summary: Create or update a category
       description: >
-        Idempotent upsert; the id is generated by the client (UUID), so a category
-        created offline can be sent later and retried safely. Creating: omit `baseVersion`.
-        Updating: pass the `version` last received from the server. If it differs,
-        nothing is written and 409 is returned.
-      operationId: createCategory
+        Same preconditions as for products: `If-None-Match: *` to create (201),
+        `If-Match: "<version>"` to update (200), 412 if it fails, 428 if neither is sent.
+        409 if the user already has a category with this name.
+      operationId: upsertCategory
       parameters:
         - $ref: "#/components/parameters/Id"
-        - $ref: "#/components/parameters/BaseVersion"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IfNoneMatch"
       requestBody:
         required: true
         content:
@@ -374,25 +454,37 @@ paths:
             schema:
               $ref: "#/components/schemas/Category"
       responses:
-        200:
-          description: Category was saved
+        "200":
+          description: The category was updated
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Category"
-        400:
+        "201":
+          description: The category was created
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
-          $ref: "#/components/responses/Forbidden"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        429:
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
     delete:
@@ -400,25 +492,29 @@ paths:
         - categories
       summary: Delete a category
       description: >
-        Idempotent: 204 even if the category is already deleted or never existed.
-        If `baseVersion` is passed and differs from the server version, the category
-        is kept and 409 is returned.
+        Requires `If-Match: "<version>"`; 412 if the category does not exist or its
+        version differs. 409 if the category still contains products: move or delete
+        them first. Missing header -> 428.
       operationId: deleteCategory
       parameters:
         - $ref: "#/components/parameters/Id"
-        - $ref: "#/components/parameters/BaseVersion"
+        - $ref: "#/components/parameters/IfMatch"
       responses:
-        204:
+        "204":
           description: The category is deleted
-        401:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        404:
-          $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        429:
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /settings:
@@ -426,26 +522,28 @@ paths:
       tags:
         - settings
       summary: Get settings
-      description: Returns user settings
+      description: Returns user settings; the current version is in the `ETag` header and in `version`.
       operationId: getSettings
       responses:
-        200:
+        "200":
           $ref: "#/components/responses/SettingsSuccess"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
     patch:
       tags:
         - settings
       summary: Patch settings
-      description: Changes user settings; baseVersion is required and must match the current version.
+      description: >
+        Changes user settings. Requires `If-Match: "<version>"`; 412 if the version
+        differs, 428 if the header is missing.
       operationId: patchSettings
       parameters:
-        - $ref: "#/components/parameters/BaseVersion"
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -453,17 +551,19 @@ paths:
             schema:
               $ref: "#/components/schemas/Settings"
       responses:
-        400:
-          $ref: "#/components/responses/BadRequest"
-        409:
-          $ref: "#/components/responses/Conflict"
-        200:
+        "200":
           $ref: "#/components/responses/SettingsSuccess"
-        401:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        429:
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
           $ref: "#/components/responses/TooManyRequests"
-        500:
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
 components:
@@ -499,7 +599,7 @@ components:
 
     Error:
       type: object
-      required: [code, message]
+      required: [ code, message ]
       properties:
         code:
           type: string
@@ -515,13 +615,14 @@ components:
       enum: [ yandex ]
 
     Product:
-      description: Fields of a product that the client can edit
+      description: A product in the user's fridge. All fields except `version` are set by the client (full replacement).
       type: object
-      required: [ id, name, expiresAt ]
+      required: [ id, name, categoryId, expiresAt ]
       properties:
         id:
           type: string
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 1
@@ -553,12 +654,12 @@ components:
           minimum: 1
           maximum: 3650
           description: Days the product stays good after it was opened
-
         version:
           type: integer
           format: int32
           minimum: 1
           readOnly: true
+          description: Set by the server; the same value is sent in the ETag header
 
     ProductList:
       type: object
@@ -577,17 +678,18 @@ components:
         id:
           type: string
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 1
           maxLength: 100
           example: Dairy
-
         version:
           type: integer
           format: int32
           minimum: 1
           readOnly: true
+          description: Set by the server; the same value is sent in the ETag header
 
     CategoryList:
       type: object
@@ -606,19 +708,20 @@ components:
           type: boolean
         notificationTime:
           type: string
-          pattern: "^[0-2][0-9]:[0-5][0-9]:[0-5][0-9]$"
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$"
+          example: "09:00:00"
         timezone:
           type: string
         indicators:
           type: array
           items:
             $ref: "#/components/schemas/Indicator"
-
         version:
           type: integer
           format: int32
           minimum: 1
           readOnly: true
+          description: Set by the server; the same value is sent in the ETag header
 
     Indicator:
       type: object
@@ -649,36 +752,35 @@ components:
         type: string
         format: uuid
 
-    LimitParam:
-      name: limit
-      in: query
-      description: Количество возвращаемых элементов
+    IfMatch:
+      name: If-Match
+      in: header
       required: false
+      description: >
+        Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received
+        from the server. Required for updates and deletes (the server answers 428 if it
+        is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
       schema:
-        type: integer
-        minimum: 1
-        maximum: 500
-        default: 200
+        type: string
+        example: '"3"'
 
-    OffsetParam:
-      name: offset
-      in: query
-      description: Смещение от начала списка
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
       required: false
+      description: >
+        Must be exactly `*` when creating an entity: the request fails with 412 if the
+        id already exists.
       schema:
-        type: integer
-        minimum: 0
-        maximum: 500
-        default: 0
-
-    BaseVersion:
-      name: baseVersion
-      in: query
-      required: false
-      description: Version the client based its change on; omit for a never-synced product
-      schema: { type: integer, format: int64, minimum: 1 }
+        type: string
+        example: "*"
 
   headers:
+    ETag:
+      description: Current version of the entity in quotes, e.g. `"4"`
+      schema:
+        type: string
+        example: '"4"'
     RefreshTokenCookie:
       description: New refresh token
       schema:
@@ -709,25 +811,22 @@ components:
             $ref: "#/components/schemas/TokenResponse"
     SettingsSuccess:
       description: User settings
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Settings"
 
     BadRequest:
-      description: Invalid request body or validation failed
+      description: Invalid request body, headers or validation failed
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing, invalid or expired credentials
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    Forbidden:
-      description: User does not have access rights to the content.
       content:
         application/problem+json:
           schema:
@@ -739,7 +838,24 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Conflict:
-      description: Resource already exists or baseVersion differs from the server version
+      description: >
+        The request conflicts with the current state: the email is already registered,
+        the category name is taken, or the category still contains products
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PreconditionFailed:
+      description: >
+        If-Match or If-None-Match did not hold: the entity does not exist, already exists,
+        or has another version. Nothing was changed. The client drops its pending change
+        and refetches.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PreconditionRequired:
+      description: The required If-Match or If-None-Match header is missing
       content:
         application/problem+json:
           schema:

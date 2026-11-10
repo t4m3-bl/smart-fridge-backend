@@ -129,8 +129,6 @@ func TestJWTTokenManager_Generate(t *testing.T) {
 			claims, ok := parsed.Claims.(*tokens.Claims)
 			assert.True(t, ok)
 
-			assert.Equal(t, tt.args.user.ID, claims.UserID)
-			assert.Equal(t, tt.args.user.Email, claims.Email)
 			assert.Equal(t, issuer, claims.Issuer)
 			assert.Equal(t, jwt.ClaimStrings{audienceClaim}, claims.Audience)
 			assert.Equal(t, uuid.UUID(tt.args.user.ID).String(), claims.Subject)

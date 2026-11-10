@@ -2,40 +2,61 @@ package service
 
 import (
 	"context"
-	"github.com/google/uuid"
+	"errors"
+	"fmt"
 	"smart-fridge-backend/internal/domain"
-	"strings"
+	"smart-fridge-backend/internal/dto"
 )
 
 type CategoryRepository interface {
-	List(context.Context, uuid.UUID, int32, int32) ([]domain.Category, error)
-	Save(context.Context, uuid.UUID, domain.Category, *int64) (domain.Category, error)
-	Delete(context.Context, uuid.UUID, uuid.UUID, *int64) error
+	List(ctx context.Context, userID domain.UserID) ([]domain.Category, error)
+	Create(ctx context.Context, c *domain.Category) error
+	Update(ctx context.Context, c *domain.Category) error
+	Delete(ctx context.Context, in dto.CategoryDeleteInput) error
 }
+
 type CategoryService struct{ repo CategoryRepository }
 
-func NewCategoryService(repo CategoryRepository) *CategoryService { return &CategoryService{repo} }
-func (s *CategoryService) List(ctx context.Context, user uuid.UUID, limit, offset int32) ([]domain.Category, error) {
-	if limit < 1 || limit > 500 || offset < 0 {
-		return nil, domain.NewValidationErr("pagination", "invalid limit or offset")
-	}
-	return s.repo.List(ctx, user, limit, offset)
+func NewCategoryService(repo CategoryRepository) *CategoryService {
+	return &CategoryService{repo: repo}
 }
-func (s *CategoryService) Save(ctx context.Context, user uuid.UUID, item domain.Category, base *int64) (domain.Category, error) {
-	if item.ID == uuid.Nil || strings.TrimSpace(item.Name) == "" {
-		return item, domain.NewValidationErr("id/name", "required")
+
+func (s *CategoryService) List(ctx context.Context, userID domain.UserID) ([]domain.Category, error) {
+	items, err := s.repo.List(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
 	}
-	if base != nil && *base < 1 {
-		return item, domain.NewValidationErr("baseVersion", "must be positive")
-	}
-	if len(item.Name) > 100 {
-		return item, domain.NewValidationErr("name", "too long")
-	}
-	return s.repo.Save(ctx, user, item, base)
+	return items, nil
 }
-func (s *CategoryService) Delete(ctx context.Context, user, id uuid.UUID, base *int64) error {
-	if id == uuid.Nil || (base != nil && *base < 1) {
-		return domain.NewValidationErr("id/baseVersion", "invalid value")
+
+func (s *CategoryService) Save(ctx context.Context, in dto.CategorySaveInput) (*domain.Category, error) {
+	c, err := domain.NewCategory(domain.CategoryID(in.CategoryID), domain.UserID(in.UserID), in.BaseVersion, in.Name)
+	if err != nil {
+		return nil, err
 	}
-	return s.repo.Delete(ctx, user, id, base)
+
+	if c.Version == 0 {
+		err = s.repo.Create(ctx, c)
+	} else {
+		err = s.repo.Update(ctx, c)
+	}
+	if err != nil {
+		if errors.Is(err, domain.ErrAlreadyExists) {
+			err = domain.ErrVersionConflict
+		}
+		return nil, fmt.Errorf("save category: %w", err)
+	}
+
+	c.UpdateVersion()
+	return c, nil
+}
+
+func (s *CategoryService) Delete(ctx context.Context, in dto.CategoryDeleteInput) error {
+	if in.BaseVersion < 1 {
+		return domain.NewValidationErr("baseVersion", "must be >= 1")
+	}
+	if err := s.repo.Delete(ctx, in); err != nil {
+		return fmt.Errorf("delete category: %w", err)
+	}
+	return nil
 }

@@ -31,7 +31,8 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		case errors.Is(err, domain.ErrVersionConflict):
 			status = http.StatusConflict
 			problem.Code = "version_conflict"
-			problem.Message = "server version differs from baseVersion"
+			problem.Message = err.Error()
+
 		case errors.Is(err, domain.ErrAlreadyExists):
 			status = http.StatusConflict
 			problem.Code = "already_exists"

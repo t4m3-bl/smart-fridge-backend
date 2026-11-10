@@ -2,14 +2,15 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"reflect"
+	"fmt"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ProductRepository struct {
@@ -18,79 +19,139 @@ type ProductRepository struct {
 }
 
 func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
-	return &ProductRepository{pool, sqlc.New(pool)}
-}
-func (r *ProductRepository) List(ctx context.Context, user uuid.UUID, limit, offset int32) ([]domain.Product, error) {
-	rows, err := r.q.ListProductDocuments(ctx, sqlc.ListProductDocumentsParams{UserID: user, Limit: limit, Offset: offset})
-	if err != nil {
-		return nil, fridgeError(err)
+	return &ProductRepository{
+		pool: pool,
+		q:    sqlc.New(pool),
 	}
-	result := make([]domain.Product, 0, len(rows))
-	for _, row := range rows {
-		var item domain.Product
-		if err = json.Unmarshal(row, &item); err != nil {
-			return nil, err
-		}
-		result = append(result, item)
-	}
-	return result, nil
 }
-func (r *ProductRepository) Save(ctx context.Context, user uuid.UUID, item domain.Product, base *int64) (domain.Product, error) {
-	err := ownerTransaction(ctx, r.pool, user, func(q *sqlc.Queries) error {
-		raw, err := q.FindProductDocument(ctx, sqlc.FindProductDocumentParams{ID: item.ID, UserID: user})
-		if errors.Is(err, pgx.ErrNoRows) {
-			if base != nil {
-				return domain.ErrNotFound
-			}
-			item.Version = 1
-		} else if err != nil {
-			return err
-		} else {
-			var old domain.Product
-			if err = json.Unmarshal(raw, &old); err != nil {
-				return err
-			}
-			item.Version = old.Version
-			if base == nil {
-				if reflect.DeepEqual(item, old) {
-					return nil
-				}
-				return domain.ErrVersionConflict
-			}
-			if *base != int64(old.Version) {
-				return domain.ErrVersionConflict
-			}
-			item.Version++
-		}
-		data, err := document(item, user)
-		if err != nil {
-			return err
-		}
-		raw, err = q.SaveProductDocument(ctx, data)
-		if err != nil {
-			return err
-		}
-		return json.Unmarshal(raw, &item)
-	})
-	return item, err
-}
-func (r *ProductRepository) Delete(ctx context.Context, user, id uuid.UUID, base *int64) error {
-	return ownerTransaction(ctx, r.pool, user, func(q *sqlc.Queries) error {
-		raw, err := q.FindProductDocument(ctx, sqlc.FindProductDocumentParams{ID: id, UserID: user})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		var old domain.Product
-		if err = json.Unmarshal(raw, &old); err != nil {
-			return err
-		}
-		if base != nil && *base != int64(old.Version) {
-			return domain.ErrVersionConflict
-		}
 
-		return q.DeleteProductDocument(ctx, sqlc.DeleteProductDocumentParams{ID: id, UserID: user})
+func (r *ProductRepository) List(ctx context.Context, userID domain.UserID) ([]domain.Product, error) {
+	rows, err := r.q.ListProducts(ctx, uuid.UUID(userID))
+	if err != nil {
+		return nil, fmt.Errorf("list products: %w", err)
+	}
+
+	products := make([]domain.Product, 0, len(rows))
+	for _, row := range rows {
+		products = append(products, domain.Product{
+			ID:      domain.ProductID(row.ID),
+			UserID:  domain.UserID(row.UserID),
+			Version: row.Version,
+			ProductData: domain.ProductData{
+				Name:                  row.Name,
+				CategoryID:            domain.CategoryID(row.CategoryID),
+				Description:           row.Description,
+				Quantity:              row.Quantity,
+				ImageLink:             (*domain.ImageLink)(row.ImageLink),
+				ManufacturedAt:        row.ManufacturedAt,
+				ExpiresAt:             row.ExpiresAt,
+				OpenedAt:              row.OpenedAt,
+				ShelfLifeAfterOpening: row.ShelfLifeAfterOpening,
+			},
+		})
+	}
+
+	return products, nil
+}
+
+func (r *ProductRepository) Get(ctx context.Context, userID domain.UserID, id domain.ProductID) (*domain.Product, error) {
+	row, err := r.q.GetProduct(ctx, sqlc.GetProductParams{
+		UserID: uuid.UUID(userID),
+		ID:     uuid.UUID(id),
 	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("get product: %w", err)
+	}
+
+	return &domain.Product{
+		ID:      domain.ProductID(row.ID),
+		UserID:  domain.UserID(row.UserID),
+		Version: row.Version,
+		ProductData: domain.ProductData{
+			Name:                  row.Name,
+			CategoryID:            domain.CategoryID(row.CategoryID),
+			Description:           row.Description,
+			Quantity:              row.Quantity,
+			ImageLink:             (*domain.ImageLink)(row.ImageLink),
+			ManufacturedAt:        row.ManufacturedAt,
+			ExpiresAt:             row.ExpiresAt,
+			OpenedAt:              row.OpenedAt,
+			ShelfLifeAfterOpening: row.ShelfLifeAfterOpening,
+		},
+	}, nil
+}
+
+func (r *ProductRepository) Create(ctx context.Context, product *domain.Product) error {
+	if err := r.q.CreateProduct(ctx, sqlc.CreateProductParams{
+		UserID:                uuid.UUID(product.UserID),
+		ID:                    uuid.UUID(product.ID),
+		Name:                  product.Name,
+		CategoryID:            uuid.UUID(product.CategoryID),
+		Description:           product.Description,
+		Quantity:              product.Quantity,
+		ImageLink:             (*string)(product.ImageLink),
+		ManufacturedAt:        product.ManufacturedAt,
+		ExpiresAt:             product.ExpiresAt,
+		OpenedAt:              product.OpenedAt,
+		ShelfLifeAfterOpening: product.ShelfLifeAfterOpening,
+	}); err != nil {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+			switch pgErr.Code {
+			case "23505":
+				return fmt.Errorf("create product: %w", domain.ErrAlreadyExists)
+			case "23503":
+				return domain.NewValidationErr("categoryId", "category not found")
+			}
+		}
+		return fmt.Errorf("create product: %w", err)
+	}
+
+	return nil
+}
+
+func (r *ProductRepository) Update(ctx context.Context, product *domain.Product) error {
+	updated, err := r.q.UpdateProduct(ctx, sqlc.UpdateProductParams{
+		Name:                  product.Name,
+		CategoryID:            uuid.UUID(product.CategoryID),
+		Description:           product.Description,
+		Quantity:              product.Quantity,
+		ImageLink:             (*string)(product.ImageLink),
+		ManufacturedAt:        product.ManufacturedAt,
+		ExpiresAt:             product.ExpiresAt,
+		OpenedAt:              product.OpenedAt,
+		ShelfLifeAfterOpening: product.ShelfLifeAfterOpening,
+		UserID:                uuid.UUID(product.UserID),
+		ID:                    uuid.UUID(product.ID),
+		BaseVersion:           product.Version,
+	})
+	if err != nil {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
+			return domain.NewValidationErr("categoryId", "category not found")
+		}
+		return fmt.Errorf("update product: %w", err)
+	}
+
+	if updated == 0 {
+		return domain.ErrVersionConflict
+	}
+
+	return nil
+}
+
+func (r *ProductRepository) Delete(ctx context.Context, userID domain.UserID, id domain.ProductID, baseVersion int32) error {
+	deleted, err := r.q.DeleteProduct(ctx, sqlc.DeleteProductParams{
+		UserID:      uuid.UUID(userID),
+		ID:          uuid.UUID(id),
+		BaseVersion: baseVersion,
+	})
+	if err != nil {
+		return fmt.Errorf("delete product: %w", err)
+	}
+	if deleted == 0 {
+		return domain.ErrVersionConflict
+	}
+	return nil
 }

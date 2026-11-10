@@ -7,7 +7,7 @@ import (
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
-	"smart-fridge-backend/internal/transport/http/cookie"
+	"smart-fridge-backend/internal/transport/http/utils/cookie"
 	"smart-fridge-backend/internal/usecase/auth/oauth"
 	"smart-fridge-backend/internal/usecase/auth/tokens"
 	"smart-fridge-backend/internal/usecase/service"
@@ -72,6 +72,7 @@ var usecases = fx.Module("usecases",
 
 var transport = fx.Module("transport",
 	fx.Provide(
+		httpserver.NewAuthenticator,
 		newCookieFactory,
 		controllers.NewAuthController,
 		controllers.NewProductController,

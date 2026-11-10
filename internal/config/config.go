@@ -21,6 +21,7 @@ type Config struct {
 	Database Database `mapstructure:"database"`
 	Auth     Auth     `mapstructure:"auth"`
 	Crypto   Crypto   `mapstructure:"crypto"`
+	Storage  Storage  `mapstructure:"storage"`
 }
 
 type FrontendURL string
@@ -66,10 +67,6 @@ type OAuthProvider struct {
 	Scopes       []string `mapstructure:"scopes" validate:"required,gt=0"`
 }
 
-func (p OAuthProvider) Enabled() bool {
-	return p.ClientID != "" && p.ClientSecret != ""
-}
-
 type Crypto struct {
 	Argon2 Argon2 `mapstructure:"argon2"`
 }
@@ -80,6 +77,18 @@ type Argon2 struct {
 	Threads   uint8  `mapstructure:"threads" validate:"required,gt=0"`
 	SaltLen   uint32 `mapstructure:"salt_len" validate:"required,gt=0"`
 	KeyLen    uint32 `mapstructure:"key_len" validate:"required,gt=0"`
+}
+
+type Storage struct {
+	Endpoint        string `mapstructure:"endpoint"`
+	Region          string `mapstructure:"region"`
+	Bucket          string `mapstructure:"bucket"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+
+	UploadTTL    time.Duration `mapstructure:"upload_ttl"`
+	DownloadTTL  time.Duration `mapstructure:"download_ttl"`
+	MaxImageSize int64         `mapstructure:"max_image_size"`
 }
 
 const (

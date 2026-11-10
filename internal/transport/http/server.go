@@ -12,10 +12,16 @@ import (
 	"smart-fridge-backend/internal/transport/http/swagger"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/labstack/echo/v5"
 	echoMiddleware "github.com/labstack/echo/v5/middleware"
+	echomiddleware "github.com/oapi-codegen/echo-v5-middleware"
 	"go.uber.org/fx"
 )
+
+type OpenApiAuthenticator interface {
+	Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error
+}
 
 type Server struct {
 	echo *echo.Echo
@@ -27,7 +33,7 @@ type Server struct {
 	done   chan struct{}
 }
 
-func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error) {
+func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServerInterface) (*Server, error) {
 	// get open-api spec
 	spec, err := api.GetSpec()
 	if err != nil {
@@ -54,8 +60,15 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 		e.Use(echoMiddleware.Secure())
 	}
 
+	// auth middleware
+	openAPIValidator := echomiddleware.OapiRequestValidatorWithOptions(spec, &echomiddleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: auth.Authenticate,
+		},
+	})
+
 	// routes and controllers registration
-	apiGroup := e.Group("/api/v1", middleware.JWT(cfg.Auth.JWTSecret, spec, swagger.SpecPath, "/api/v1"))
+	apiGroup := e.Group("/api/v1", openAPIValidator)
 	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
 	e.GET("/favicon.ico", noContentHandler)
 

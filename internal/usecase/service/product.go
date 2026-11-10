@@ -2,76 +2,65 @@ package service
 
 import (
 	"context"
-	"github.com/google/uuid"
+	"errors"
+	"fmt"
 	"smart-fridge-backend/internal/domain"
-	"strings"
-	"time"
+	"smart-fridge-backend/internal/dto"
 )
 
 type ProductRepository interface {
-	List(context.Context, uuid.UUID, int32, int32) ([]domain.Product, error)
-	Save(context.Context, uuid.UUID, domain.Product, *int64) (domain.Product, error)
-	Delete(context.Context, uuid.UUID, uuid.UUID, *int64) error
+	List(ctx context.Context, userID domain.UserID) ([]domain.Product, error)
+	Get(ctx context.Context, userID domain.UserID, id domain.ProductID) (*domain.Product, error)
+	Create(ctx context.Context, product *domain.Product) error
+	Update(ctx context.Context, product *domain.Product) error
+	Delete(ctx context.Context, userID domain.UserID, id domain.ProductID, baseVersion int32) error
 }
-type ProductService struct{ repo ProductRepository }
 
-func NewProductService(repo ProductRepository) *ProductService { return &ProductService{repo} }
-func (s *ProductService) List(ctx context.Context, user uuid.UUID, limit, offset int32) ([]domain.Product, error) {
-	if limit < 1 || limit > 500 || offset < 0 {
-		return nil, domain.NewValidationErr("pagination", "invalid limit or offset")
-	}
-	return s.repo.List(ctx, user, limit, offset)
+type ProductService struct {
+	repo ProductRepository
 }
-func (s *ProductService) Save(ctx context.Context, user uuid.UUID, item domain.Product, base *int64) (domain.Product, error) {
-	if item.ID == uuid.Nil || strings.TrimSpace(item.Name) == "" {
-		return item, domain.NewValidationErr("id/name", "required")
-	}
-	if base != nil && *base < 1 {
-		return item, domain.NewValidationErr("baseVersion", "must be positive")
-	}
-	if len([]rune(item.Name)) > 200 || item.ExpiresAt == "" {
-		return item, domain.NewValidationErr("product", "name and expiresAt are required")
-	}
-	expires, err := time.Parse("2006-01-02", item.ExpiresAt)
-	if err != nil || expires.IsZero() {
-		return item, domain.NewValidationErr("expiresAt", "invalid date")
-	}
-	if item.OpenedAt != nil {
-		if _, err := time.Parse("2006-01-02", *item.OpenedAt); err != nil {
-			return item, domain.NewValidationErr("openedAt", "invalid date")
-		}
-	}
-	if item.CategoryID != nil && *item.CategoryID == uuid.Nil {
-		return item, domain.NewValidationErr("categoryId", "invalid UUID")
-	}
-	for _, field := range []struct {
-		name  string
-		value *string
-		max   int
-	}{{"description", item.Description, 2000}, {"quantity", item.Quantity, 100}, {"imageLink", item.ImageLink, 2048}} {
-		if field.value != nil && len([]rune(*field.value)) > field.max {
-			return item, domain.NewValidationErr(field.name, "too long")
-		}
+
+func NewProductService(repo ProductRepository) *ProductService {
+	return &ProductService{repo: repo}
+}
+
+func (s *ProductService) List(ctx context.Context, userID domain.UserID) ([]domain.Product, error) {
+	products, err := s.repo.List(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list products: %w", err)
 	}
 
-	if item.ManufacturedAt != nil {
-		made, e := time.Parse("2006-01-02", *item.ManufacturedAt)
-		if e != nil || made.After(expires) {
-			return item, domain.NewValidationErr("manufacturedAt", "invalid date order")
-		}
-		if item.OpenedAt != nil && *item.OpenedAt < *item.ManufacturedAt {
-			return item, domain.NewValidationErr("openedAt", "before manufacture")
-		}
-	}
-	if item.ShelfLifeAfterOpening != nil && (*item.ShelfLifeAfterOpening < 1 || *item.ShelfLifeAfterOpening > 3650) {
-		return item, domain.NewValidationErr("shelfLifeAfterOpening", "must be 1..3650")
+	return products, nil
+}
+
+func (s *ProductService) Save(ctx context.Context, in dto.ProductInput) (*domain.Product, error) {
+	p, err := domain.NewProduct(domain.ProductID(in.ProductID), domain.UserID(in.UserID), in.BaseVersion, in.Data)
+	if err != nil {
+		return nil, err
 	}
 
-	return s.repo.Save(ctx, user, item, base)
-}
-func (s *ProductService) Delete(ctx context.Context, user, id uuid.UUID, base *int64) error {
-	if id == uuid.Nil || (base != nil && *base < 1) {
-		return domain.NewValidationErr("id/baseVersion", "invalid value")
+	if p.Version == 0 {
+		err = s.repo.Create(ctx, p)
+	} else {
+		err = s.repo.Update(ctx, p)
 	}
-	return s.repo.Delete(ctx, user, id, base)
+	if err != nil {
+		if errors.Is(err, domain.ErrAlreadyExists) {
+			err = domain.ErrVersionConflict
+		}
+		return nil, fmt.Errorf("save product: %w", err)
+	}
+
+	p.UpdateVersion()
+	return p, nil
+}
+
+func (s *ProductService) Delete(ctx context.Context, userID domain.UserID, id domain.ProductID, base int32) error {
+	if base < 1 {
+		return domain.NewValidationErr("baseVersion", "must be >= 1")
+	}
+	if err := s.repo.Delete(ctx, userID, id, base); err != nil {
+		return fmt.Errorf("delete product: %w", err)
+	}
+	return nil
 }

@@ -28,6 +28,26 @@ func HTTPErrorHandler(c *echo.Context, err error) {
 		problem.Message = vErr.Error()
 	} else {
 		switch {
+		case errors.Is(err, domain.ErrPreconditionRequired):
+			status = http.StatusPreconditionRequired
+			problem.Code = "precondition_required"
+			problem.Message = "a version precondition is required"
+
+		case errors.Is(err, domain.ErrImageStorageUnavailable):
+			status = http.StatusServiceUnavailable
+			problem.Code = "image_storage_unavailable"
+			problem.Message = "image storage is not configured"
+
+		case errors.Is(err, domain.ErrImageStorageFailed):
+			status = http.StatusBadGateway
+			problem.Code = "image_storage_failed"
+			problem.Message = "image storage request failed"
+
+		case errors.Is(err, domain.ErrVersionConflict):
+			status = http.StatusPreconditionFailed
+			problem.Code = "version_conflict"
+			problem.Message = err.Error()
+
 		case errors.Is(err, domain.ErrAlreadyExists):
 			status = http.StatusConflict
 			problem.Code = "already_exists"

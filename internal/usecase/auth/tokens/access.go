@@ -35,8 +35,6 @@ func NewTokenManager(secret string, ttl time.Duration) (*JWTTokenManager, error)
 }
 
 type Claims struct {
-	UserID domain.UserID `json:"uid"`
-	Email  domain.Email  `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -47,8 +45,6 @@ func (m *JWTTokenManager) Generate(user *domain.User) (dto.Token, error) {
 
 	now := time.Now().UTC()
 	claims := Claims{
-		UserID: user.ID,
-		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   uuid.UUID(user.ID).String(),
@@ -56,7 +52,6 @@ func (m *JWTTokenManager) Generate(user *domain.User) (dto.Token, error) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
-			ID:        uuid.NewString(),
 		},
 	}
 
@@ -70,4 +65,43 @@ func (m *JWTTokenManager) Generate(user *domain.User) (dto.Token, error) {
 		Body: signed,
 		TTL:  m.ttl,
 	}, nil
+}
+
+func (m *JWTTokenManager) Verify(tokenString string) (domain.UserID, error) {
+	if tokenString == "" {
+		return domain.UserID{}, domain.ErrInvalidCredentials
+	}
+
+	claims := new(Claims)
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing algorithm: %v", token.Header["alg"])
+		}
+
+		return m.secret, nil
+	},
+		jwt.WithValidMethods(
+			[]string{jwt.SigningMethodHS256.Alg()},
+		),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audienceClaim),
+		jwt.WithExpirationRequired(),
+		jwt.WithNotBeforeRequired(),
+		jwt.WithIssuedAt(),
+		jwt.WithStrictDecoding(),
+	)
+	if err != nil || token == nil || !token.Valid {
+		return domain.UserID{}, domain.ErrInvalidCredentials
+	}
+
+	if claims.ExpiresAt.Before(claims.IssuedAt.Time) {
+		return domain.UserID{}, domain.ErrInvalidCredentials
+	}
+
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil || id == uuid.Nil {
+		return domain.UserID{}, domain.ErrInvalidCredentials
+	}
+
+	return domain.UserID(id), nil
 }

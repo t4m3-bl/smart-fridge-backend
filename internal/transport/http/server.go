@@ -6,16 +6,23 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
 	"smart-fridge-backend/internal/transport/http/swagger"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/labstack/echo/v5"
 	echoMiddleware "github.com/labstack/echo/v5/middleware"
+	echomiddleware "github.com/oapi-codegen/echo-v5-middleware"
 	"go.uber.org/fx"
 )
+
+type OpenApiAuthenticator interface {
+	Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error
+}
 
 type Server struct {
 	echo *echo.Echo
@@ -27,7 +34,7 @@ type Server struct {
 	done   chan struct{}
 }
 
-func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error) {
+func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServerInterface) (*Server, error) {
 	// get open-api spec
 	spec, err := api.GetSpec()
 	if err != nil {
@@ -45,6 +52,7 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 		e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
 			AllowOrigins:     cfg.HTTP.CORSOrigins,
 			AllowCredentials: true,
+			ExposeHeaders:    []string{"ETag"},
 		}))
 	}
 	e.Use(echoMiddleware.Gzip())
@@ -54,8 +62,21 @@ func NewServer(cfg *config.Config, h api.StrictServerInterface) (*Server, error)
 		e.Use(echoMiddleware.Secure())
 	}
 
+	// auth middleware
+	openAPIValidator := echomiddleware.OapiRequestValidatorWithOptions(spec, &echomiddleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: auth.Authenticate,
+		},
+	})
+
 	// routes and controllers registration
-	apiGroup := e.Group("/api/v1", middleware.JWT(cfg.Auth.JWTSecret, spec, swagger.SpecPath, "/api/v1"))
+	imageLimit := echoMiddleware.BodyLimitWithConfig(echoMiddleware.BodyLimitConfig{
+		LimitBytes: cfg.Storage.MaxImageSize + 64*1024,
+		Skipper: func(c *echo.Context) bool {
+			return c.Request().Method != http.MethodPost || c.Path() != "/api/v1/products/:id/image"
+		},
+	})
+	apiGroup := e.Group("/api/v1", imageLimit, openAPIValidator)
 	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
 	e.GET("/favicon.ico", noContentHandler)
 

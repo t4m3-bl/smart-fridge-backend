@@ -21,6 +21,7 @@ type Config struct {
 	Database Database `mapstructure:"database"`
 	Auth     Auth     `mapstructure:"auth"`
 	Crypto   Crypto   `mapstructure:"crypto"`
+	Storage  Storage  `mapstructure:"storage"`
 }
 
 type FrontendURL string
@@ -66,10 +67,6 @@ type OAuthProvider struct {
 	Scopes       []string `mapstructure:"scopes" validate:"required,gt=0"`
 }
 
-func (p OAuthProvider) Enabled() bool {
-	return p.ClientID != "" && p.ClientSecret != ""
-}
-
 type Crypto struct {
 	Argon2 Argon2 `mapstructure:"argon2"`
 }
@@ -80,6 +77,22 @@ type Argon2 struct {
 	Threads   uint8  `mapstructure:"threads" validate:"required,gt=0"`
 	SaltLen   uint32 `mapstructure:"salt_len" validate:"required,gt=0"`
 	KeyLen    uint32 `mapstructure:"key_len" validate:"required,gt=0"`
+}
+
+type Storage struct {
+	Endpoint        string `mapstructure:"endpoint"`
+	Region          string `mapstructure:"region"`
+	Bucket          string `mapstructure:"bucket"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+
+	UploadTTL    time.Duration `mapstructure:"upload_ttl"`
+	DownloadTTL  time.Duration `mapstructure:"download_ttl"`
+	MaxImageSize int64         `mapstructure:"max_image_size"`
+}
+
+func (s Storage) Enabled() bool {
+	return s.Bucket != "" || s.AccessKeyID != "" || s.SecretAccessKey != ""
 }
 
 const (
@@ -150,6 +163,12 @@ func (c *Config) customValidate() error {
 		errs = append(errs, errors.New("auth.jwt.refresh_ttl must be greater than auth.jwt.access_ttl"))
 	}
 
+	if c.Storage.MaxImageSize <= 0 || c.Storage.MaxImageSize > 20*1024*1024 {
+		errs = append(errs, errors.New("storage.max_image_size must be between 1 byte and 20 MiB"))
+	}
+	if c.Storage.DownloadTTL < time.Second || c.Storage.DownloadTTL > 7*24*time.Hour {
+		errs = append(errs, errors.New("storage.download_ttl must be between 1 second and 7 days"))
+	}
 	return errors.Join(errs...)
 }
 
@@ -165,6 +184,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.swagger_enabled", false)
 
 	v.SetDefault("database.url", "")
+	v.SetDefault("storage.max_image_size", 5*1024*1024)
+	v.SetDefault("storage.download_ttl", "15m")
 
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.jwt.access_ttl", "15m")
@@ -193,6 +214,21 @@ func bindEnvAliases(v *viper.Viper) error {
 	for key, env := range aliases {
 		if err := v.BindEnv(key, env); err != nil {
 			return fmt.Errorf("bind env %s: %w", env, err)
+		}
+	}
+
+	for _, key := range []string{
+		"storage.endpoint",
+		"storage.region",
+		"storage.bucket",
+		"storage.access_key_id",
+		"storage.secret_access_key",
+		"storage.upload_ttl",
+		"storage.download_ttl",
+		"storage.max_image_size",
+	} {
+		if err := v.BindEnv(key); err != nil {
+			return fmt.Errorf("bind env %s: %w", key, err)
 		}
 	}
 

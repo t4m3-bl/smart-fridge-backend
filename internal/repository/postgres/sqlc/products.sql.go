@@ -14,11 +14,11 @@ import (
 
 const createProduct = `-- name: CreateProduct :exec
 INSERT INTO products (
-    user_id, id, name, category_id, description, quantity, image_link,
+    user_id, id, name, category_id, description, quantity,
     manufactured_at, expires_at, opened_at, shelf_life_after_opening
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10
 )
 `
 
@@ -29,7 +29,6 @@ type CreateProductParams struct {
 	CategoryID            uuid.UUID
 	Description           *string
 	Quantity              *string
-	ImageLink             *string
 	ManufacturedAt        *time.Time
 	ExpiresAt             time.Time
 	OpenedAt              *time.Time
@@ -44,7 +43,6 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) er
 		arg.CategoryID,
 		arg.Description,
 		arg.Quantity,
-		arg.ImageLink,
 		arg.ManufacturedAt,
 		arg.ExpiresAt,
 		arg.OpenedAt,
@@ -53,11 +51,12 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) er
 	return err
 }
 
-const deleteProduct = `-- name: DeleteProduct :execrows
+const deleteProduct = `-- name: DeleteProduct :one
 DELETE FROM products
 WHERE user_id = $1
   AND id = $2
   AND version = $3::int
+RETURNING image_key
 `
 
 type DeleteProductParams struct {
@@ -66,16 +65,15 @@ type DeleteProductParams struct {
 	BaseVersion int32
 }
 
-func (q *Queries) DeleteProduct(ctx context.Context, arg DeleteProductParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteProduct, arg.UserID, arg.ID, arg.BaseVersion)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) DeleteProduct(ctx context.Context, arg DeleteProductParams) (*string, error) {
+	row := q.db.QueryRow(ctx, deleteProduct, arg.UserID, arg.ID, arg.BaseVersion)
+	var image_key *string
+	err := row.Scan(&image_key)
+	return image_key, err
 }
 
 const getProduct = `-- name: GetProduct :one
-SELECT user_id, id, category_id, name, description, quantity, image_link, manufactured_at, expires_at, opened_at, shelf_life_after_opening, version, created_at, updated_at, effective_expires_at FROM products
+SELECT user_id, id, category_id, name, description, quantity, image_key, manufactured_at, expires_at, opened_at, shelf_life_after_opening, version, created_at, updated_at, effective_expires_at FROM products
 WHERE user_id = $1 AND id = $2
 `
 
@@ -94,7 +92,7 @@ func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (Product
 		&i.Name,
 		&i.Description,
 		&i.Quantity,
-		&i.ImageLink,
+		&i.ImageKey,
 		&i.ManufacturedAt,
 		&i.ExpiresAt,
 		&i.OpenedAt,
@@ -108,7 +106,7 @@ func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (Product
 }
 
 const listProducts = `-- name: ListProducts :many
-SELECT user_id, id, category_id, name, description, quantity, image_link, manufactured_at, expires_at, opened_at, shelf_life_after_opening, version, created_at, updated_at, effective_expires_at FROM products
+SELECT user_id, id, category_id, name, description, quantity, image_key, manufactured_at, expires_at, opened_at, shelf_life_after_opening, version, created_at, updated_at, effective_expires_at FROM products
 WHERE user_id = $1
 ORDER BY id
 `
@@ -129,7 +127,7 @@ func (q *Queries) ListProducts(ctx context.Context, userID uuid.UUID) ([]Product
 			&i.Name,
 			&i.Description,
 			&i.Quantity,
-			&i.ImageLink,
+			&i.ImageKey,
 			&i.ManufacturedAt,
 			&i.ExpiresAt,
 			&i.OpenedAt,
@@ -149,22 +147,48 @@ func (q *Queries) ListProducts(ctx context.Context, userID uuid.UUID) ([]Product
 	return items, nil
 }
 
-const updateProduct = `-- name: UpdateProduct :execrows
+const setProductImage = `-- name: SetProductImage :one
+UPDATE products
+SET image_key = $1, version = version + 1, updated_at = now()
+WHERE user_id = $2 AND id = $3 AND version = $4::int
+RETURNING version
+`
+
+type SetProductImageParams struct {
+	ImageKey    *string
+	UserID      uuid.UUID
+	ID          uuid.UUID
+	BaseVersion int32
+}
+
+func (q *Queries) SetProductImage(ctx context.Context, arg SetProductImageParams) (int32, error) {
+	row := q.db.QueryRow(ctx, setProductImage,
+		arg.ImageKey,
+		arg.UserID,
+		arg.ID,
+		arg.BaseVersion,
+	)
+	var version int32
+	err := row.Scan(&version)
+	return version, err
+}
+
+const updateProduct = `-- name: UpdateProduct :one
 UPDATE products SET
     name                     = $1,
     category_id              = $2,
     description              = $3,
     quantity                 = $4,
-    image_link               = $5,
-    manufactured_at          = $6,
-    expires_at               = $7,
-    opened_at                = $8,
-    shelf_life_after_opening = $9,
+    manufactured_at          = $5,
+    expires_at               = $6,
+    opened_at                = $7,
+    shelf_life_after_opening = $8,
     version                  = version + 1,
     updated_at               = now()
-WHERE user_id = $10
-  AND id = $11
-  AND version = $12::int
+WHERE user_id = $9
+  AND id = $10
+  AND version = $11::int
+RETURNING image_key
 `
 
 type UpdateProductParams struct {
@@ -172,7 +196,6 @@ type UpdateProductParams struct {
 	CategoryID            uuid.UUID
 	Description           *string
 	Quantity              *string
-	ImageLink             *string
 	ManufacturedAt        *time.Time
 	ExpiresAt             time.Time
 	OpenedAt              *time.Time
@@ -182,13 +205,12 @@ type UpdateProductParams struct {
 	BaseVersion           int32
 }
 
-func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateProduct,
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (*string, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
 		arg.Name,
 		arg.CategoryID,
 		arg.Description,
 		arg.Quantity,
-		arg.ImageLink,
 		arg.ManufacturedAt,
 		arg.ExpiresAt,
 		arg.OpenedAt,
@@ -197,8 +219,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (i
 		arg.ID,
 		arg.BaseVersion,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var image_key *string
+	err := row.Scan(&image_key)
+	return image_key, err
 }

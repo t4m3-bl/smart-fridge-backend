@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"net/url"
 	"time"
 	"unicode/utf8"
 
@@ -13,7 +12,6 @@ const (
 	MaxNameLen               = 200
 	MaxDescriptionLen        = 2000
 	MaxQuantityLen           = 100
-	MaxImageLinkLen          = 2048
 	MinShelfAfterOpeningDays = 1
 	MaxShelfAfterOpeningDays = 3650
 )
@@ -21,9 +19,11 @@ const (
 type ProductID uuid.UUID
 
 type Product struct {
-	ID      ProductID
-	UserID  UserID
-	Version int32
+	ID        ProductID
+	UserID    UserID
+	Version   int32
+	ImageKey  *string
+	ImageLink *string
 	ProductData
 }
 
@@ -32,7 +32,6 @@ type ProductData struct {
 	CategoryID            CategoryID
 	Description           *string
 	Quantity              *string
-	ImageLink             *ImageLink
 	ManufacturedAt        *time.Time
 	ExpiresAt             time.Time
 	OpenedAt              *time.Time
@@ -101,19 +100,4 @@ func NewProduct(id ProductID, userID UserID, version int32, data ProductData) (*
 
 func (p *Product) UpdateVersion() {
 	p.Version++
-}
-
-type ImageLink string
-
-func NewImageLink(link string) (ImageLink, error) {
-	if link == "" || len(link) > MaxImageLinkLen {
-		return "", NewValidationErr("imageLink", fmt.Sprintf("string is empty or longer than %d", MaxImageLinkLen))
-	}
-
-	u, err := url.Parse(link)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return "", NewValidationErr("imageLink", "must be an http(s) URL")
-	}
-
-	return ImageLink(link), nil
 }

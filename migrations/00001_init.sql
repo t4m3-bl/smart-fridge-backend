@@ -72,7 +72,7 @@ CREATE TABLE products (
     name                     text    NOT NULL CHECK (btrim(name) <> '' AND char_length(name) <= 200),
     description              text    CHECK (char_length(description) <= 2000),
     quantity                 text    CHECK (char_length(quantity) <= 100),
-    image_link               text    CHECK (char_length(image_link) <= 2048),
+    image_key                text,
     manufactured_at          date,
     expires_at               date    NOT NULL,
     opened_at                date,

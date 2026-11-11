@@ -344,8 +344,8 @@ paths:
         - products
       summary: Upload an image for a product
       description: >
-        Uploads a binary image file for the product. Updates the product's `imageLink`
-        internally. Requires `If-Match: "<version>"` of the product. 
+        Uploads a JPEG or PNG file for the product. The default maximum file size is 5 MiB.
+        Requires `If-Match: "<version>"` of the product.
         Returns the new version of the product in the `ETag` header.
       operationId: uploadProductImage
       parameters:
@@ -357,11 +357,12 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required: [image]
               properties:
                 image:
                   type: string
                   format: binary
-                  description: The image file (png, jpeg, etc.)
+                  description: JPEG or PNG image
       responses:
         "200":
           description: Image uploaded successfully. Returns the new product version.
@@ -376,6 +377,24 @@ paths:
           $ref: "#/components/responses/PreconditionFailed"
         "428":
           $ref: "#/components/responses/PreconditionRequired"
+        "413":
+          description: Uploaded image is too large
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Image storage request failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Image storage is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -384,7 +403,7 @@ paths:
         - products
       summary: Remove the image from a product
       description: >
-        Deletes the product's image from storage and clears `imageLink` in the DB.
+        Removes the product's image association and deletes the object from storage.
         Requires `If-Match: "<version>"`. Returns the new version of the product 
         in the `ETag` header.
       operationId: deleteProductImage
@@ -405,6 +424,18 @@ paths:
           $ref: "#/components/responses/PreconditionFailed"
         "428":
           $ref: "#/components/responses/PreconditionRequired"
+        "502":
+          description: Image storage request failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Image storage is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -638,7 +669,9 @@ components:
           maxLength: 100
         imageLink:
           type: string
-          maxLength: 2048
+          format: uri
+          readOnly: true
+          description: Temporary signed download URL for the product image
         manufacturedAt:
           type: string
           format: date

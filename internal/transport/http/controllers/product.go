@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
@@ -14,9 +15,14 @@ import (
 	openapitypes "github.com/oapi-codegen/runtime/types"
 )
 
-type ProductController struct{ service *service.ProductService }
+type ProductController struct {
+	service      *service.ProductService
+	maxImageSize int64
+}
 
-func NewProductController(s *service.ProductService) *ProductController { return &ProductController{s} }
+func NewProductController(s *service.ProductService, cfg *config.Config) *ProductController {
+	return &ProductController{service: s, maxImageSize: cfg.Storage.MaxImageSize}
+}
 
 func (c *ProductController) UpsertProduct(ctx context.Context, r api.UpsertProductRequestObject) (api.UpsertProductResponseObject, error) {
 	userID, err := middleware.GetUserID(ctx)
@@ -28,16 +34,12 @@ func (c *ProductController) UpsertProduct(ctx context.Context, r api.UpsertProdu
 	if err != nil {
 		return nil, err
 	}
-	data, err := toProductData(*r.Body)
-	if err != nil {
-		return nil, err
-	}
 
 	p, err := c.service.Save(ctx, dto.ProductInput{
 		ProductID:   r.Id,
 		UserID:      userID,
 		BaseVersion: base,
-		Data:        data,
+		Data:        toProductData(*r.Body),
 	})
 	if err != nil {
 		return nil, err
@@ -62,7 +64,7 @@ func (c *ProductController) DeleteProduct(ctx context.Context, r api.DeleteProdu
 		return nil, err
 	}
 
-	base, err := header.GetVersion(*r.Params.IfMatch)
+	base, err := header.ResolveVersion(r.Params.IfMatch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +101,7 @@ func newProductOutput(p *domain.Product) api.Product {
 		CategoryId:            uuid.UUID(p.CategoryID),
 		Description:           p.Description,
 		Quantity:              p.Quantity,
-		ImageLink:             (*string)(p.ImageLink),
+		ImageLink:             p.ImageLink,
 		ExpiresAt:             openapitypes.Date{Time: p.ExpiresAt},
 		ShelfLifeAfterOpening: p.ShelfLifeAfterOpening,
 		Version:               new(p.Version),

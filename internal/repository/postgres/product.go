@@ -34,15 +34,15 @@ func (r *ProductRepository) List(ctx context.Context, userID domain.UserID) ([]d
 	products := make([]domain.Product, 0, len(rows))
 	for _, row := range rows {
 		products = append(products, domain.Product{
-			ID:      domain.ProductID(row.ID),
-			UserID:  domain.UserID(row.UserID),
-			Version: row.Version,
+			ID:       domain.ProductID(row.ID),
+			UserID:   domain.UserID(row.UserID),
+			Version:  row.Version,
+			ImageKey: row.ImageKey,
 			ProductData: domain.ProductData{
 				Name:                  row.Name,
 				CategoryID:            domain.CategoryID(row.CategoryID),
 				Description:           row.Description,
 				Quantity:              row.Quantity,
-				ImageLink:             (*domain.ImageLink)(row.ImageLink),
 				ManufacturedAt:        row.ManufacturedAt,
 				ExpiresAt:             row.ExpiresAt,
 				OpenedAt:              row.OpenedAt,
@@ -67,15 +67,15 @@ func (r *ProductRepository) Get(ctx context.Context, userID domain.UserID, id do
 	}
 
 	return &domain.Product{
-		ID:      domain.ProductID(row.ID),
-		UserID:  domain.UserID(row.UserID),
-		Version: row.Version,
+		ID:       domain.ProductID(row.ID),
+		UserID:   domain.UserID(row.UserID),
+		Version:  row.Version,
+		ImageKey: row.ImageKey,
 		ProductData: domain.ProductData{
 			Name:                  row.Name,
 			CategoryID:            domain.CategoryID(row.CategoryID),
 			Description:           row.Description,
 			Quantity:              row.Quantity,
-			ImageLink:             (*domain.ImageLink)(row.ImageLink),
 			ManufacturedAt:        row.ManufacturedAt,
 			ExpiresAt:             row.ExpiresAt,
 			OpenedAt:              row.OpenedAt,
@@ -92,7 +92,6 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product)
 		CategoryID:            uuid.UUID(product.CategoryID),
 		Description:           product.Description,
 		Quantity:              product.Quantity,
-		ImageLink:             (*string)(product.ImageLink),
 		ManufacturedAt:        product.ManufacturedAt,
 		ExpiresAt:             product.ExpiresAt,
 		OpenedAt:              product.OpenedAt,
@@ -113,12 +112,11 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product)
 }
 
 func (r *ProductRepository) Update(ctx context.Context, product *domain.Product) error {
-	updated, err := r.q.UpdateProduct(ctx, sqlc.UpdateProductParams{
+	key, err := r.q.UpdateProduct(ctx, sqlc.UpdateProductParams{
 		Name:                  product.Name,
 		CategoryID:            uuid.UUID(product.CategoryID),
 		Description:           product.Description,
 		Quantity:              product.Quantity,
-		ImageLink:             (*string)(product.ImageLink),
 		ManufacturedAt:        product.ManufacturedAt,
 		ExpiresAt:             product.ExpiresAt,
 		OpenedAt:              product.OpenedAt,
@@ -127,6 +125,9 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 		ID:                    uuid.UUID(product.ID),
 		BaseVersion:           product.Version,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrVersionConflict
+	}
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
 			return domain.NewValidationErr("categoryId", "category not found")
@@ -134,24 +135,38 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 		return fmt.Errorf("update product: %w", err)
 	}
 
-	if updated == 0 {
-		return domain.ErrVersionConflict
-	}
+	product.ImageKey = key
 
 	return nil
 }
 
-func (r *ProductRepository) Delete(ctx context.Context, userID domain.UserID, id domain.ProductID, baseVersion int32) error {
-	deleted, err := r.q.DeleteProduct(ctx, sqlc.DeleteProductParams{
+func (r *ProductRepository) Delete(ctx context.Context, userID domain.UserID, id domain.ProductID, baseVersion int32) (*string, error) {
+	key, err := r.q.DeleteProduct(ctx, sqlc.DeleteProductParams{
 		UserID:      uuid.UUID(userID),
 		ID:          uuid.UUID(id),
 		BaseVersion: baseVersion,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrVersionConflict
+	}
 	if err != nil {
-		return fmt.Errorf("delete product: %w", err)
+		return nil, fmt.Errorf("delete product: %w", err)
 	}
-	if deleted == 0 {
-		return domain.ErrVersionConflict
+	return key, nil
+}
+
+func (r *ProductRepository) SetImage(ctx context.Context, userID domain.UserID, id domain.ProductID, baseVersion int32, key *string) (int32, error) {
+	version, err := r.q.SetProductImage(ctx, sqlc.SetProductImageParams{
+		UserID:      uuid.UUID(userID),
+		ID:          uuid.UUID(id),
+		BaseVersion: baseVersion,
+		ImageKey:    key,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrVersionConflict
 	}
-	return nil
+	if err != nil {
+		return 0, fmt.Errorf("set product image: %w", err)
+	}
+	return version, nil
 }

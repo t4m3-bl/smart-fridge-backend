@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
@@ -51,6 +52,7 @@ func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServer
 		e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
 			AllowOrigins:     cfg.HTTP.CORSOrigins,
 			AllowCredentials: true,
+			ExposeHeaders:    []string{"ETag"},
 		}))
 	}
 	e.Use(echoMiddleware.Gzip())
@@ -68,7 +70,13 @@ func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServer
 	})
 
 	// routes and controllers registration
-	apiGroup := e.Group("/api/v1", openAPIValidator)
+	imageLimit := echoMiddleware.BodyLimitWithConfig(echoMiddleware.BodyLimitConfig{
+		LimitBytes: cfg.Storage.MaxImageSize + 64*1024,
+		Skipper: func(c *echo.Context) bool {
+			return c.Request().Method != http.MethodPost || c.Path() != "/api/v1/products/:id/image"
+		},
+	})
+	apiGroup := e.Group("/api/v1", imageLimit, openAPIValidator)
 	api.RegisterHandlers(apiGroup, api.NewStrictHandler(h, nil))
 	e.GET("/favicon.ico", noContentHandler)
 

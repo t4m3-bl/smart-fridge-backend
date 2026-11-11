@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
@@ -97,10 +98,12 @@ type OAuthProviderName string
 
 // Product A product in the user's fridge. All fields except `version` are set by the client (full replacement).
 type Product struct {
-	CategoryId     openapi_types.UUID  `json:"categoryId"`
-	Description    *string             `json:"description,omitempty"`
-	ExpiresAt      openapi_types.Date  `json:"expiresAt"`
-	Id             *openapi_types.UUID `json:"id,omitempty"`
+	CategoryId  openapi_types.UUID  `json:"categoryId"`
+	Description *string             `json:"description,omitempty"`
+	ExpiresAt   openapi_types.Date  `json:"expiresAt"`
+	Id          *openapi_types.UUID `json:"id,omitempty"`
+
+	// ImageLink Temporary signed download URL for the product image
 	ImageLink      *string             `json:"imageLink,omitempty"`
 	ManufacturedAt *openapi_types.Date `json:"manufacturedAt,omitempty"`
 	Name           string              `json:"name"`
@@ -246,6 +249,24 @@ type UpsertProductParams struct {
 	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
+// DeleteProductImageParams defines parameters for DeleteProductImage.
+type DeleteProductImageParams struct {
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// UploadProductImageMultipartBody defines body for UploadProductImage for multipart/form-data ContentType.
+type UploadProductImageMultipartBody struct {
+	// Image JPEG or PNG image
+	Image openapi_types.File `json:"image"`
+}
+
+// UploadProductImageParams defines parameters for UploadProductImage.
+type UploadProductImageParams struct {
+	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // PatchSettingsParams defines parameters for PatchSettings.
 type PatchSettingsParams struct {
 	// IfMatch Version the change is based on, in quotes, e.g. `"3"`: the `ETag` last received from the server. Required for updates and deletes (the server answers 428 if it is missing). Only a single strong tag is accepted: no lists, no `W/`, no `*`.
@@ -263,6 +284,9 @@ type UpsertCategoryJSONRequestBody = Category
 
 // UpsertProductJSONRequestBody defines body for UpsertProduct for application/json ContentType.
 type UpsertProductJSONRequestBody = Product
+
+// UploadProductImageMultipartRequestBody defines body for UploadProductImage for multipart/form-data ContentType.
+type UploadProductImageMultipartRequestBody UploadProductImageMultipartBody
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody = Settings
@@ -305,6 +329,12 @@ type ServerInterface interface {
 	// UpsertProduct Create or update a product
 	// (PUT /products/{id})
 	UpsertProduct(ctx *echo.Context, id Id, params UpsertProductParams) error
+	// DeleteProductImage Remove the image from a product
+	// (DELETE /products/{id}/image)
+	DeleteProductImage(ctx *echo.Context, id Id, params DeleteProductImageParams) error
+	// UploadProductImage Upload an image for a product
+	// (POST /products/{id}/image)
+	UploadProductImage(ctx *echo.Context, id Id, params UploadProductImageParams) error
 	// GetSettings Get settings
 	// (GET /settings)
 	GetSettings(ctx *echo.Context) error
@@ -664,6 +694,78 @@ func (w *ServerInterfaceWrapper) UpsertProduct(ctx *echo.Context) error {
 	return err
 }
 
+// DeleteProductImage converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteProductImage(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteProductImageParams
+
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteProductImage(ctx, id, params)
+	return err
+}
+
+// UploadProductImage converts echo context to params.
+func (w *ServerInterfaceWrapper) UploadProductImage(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UploadProductImageParams
+
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for If-Match, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter If-Match: %s", err))
+		}
+
+		params.IfMatch = &IfMatch
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UploadProductImage(ctx, id, params)
+	return err
+}
+
 // GetSettings converts echo context to params.
 func (w *ServerInterfaceWrapper) GetSettings(ctx *echo.Context) error {
 	var err error
@@ -758,6 +860,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/products", wrapper.ListProducts, options.OperationMiddlewares["listProducts"]...)
 	router.DELETE(options.BaseURL+"/products/:id", wrapper.DeleteProduct, options.OperationMiddlewares["deleteProduct"]...)
 	router.PUT(options.BaseURL+"/products/:id", wrapper.UpsertProduct, options.OperationMiddlewares["upsertProduct"]...)
+	router.DELETE(options.BaseURL+"/products/:id/image", wrapper.DeleteProductImage, options.OperationMiddlewares["deleteProductImage"]...)
+	router.POST(options.BaseURL+"/products/:id/image", wrapper.UploadProductImage, options.OperationMiddlewares["uploadProductImage"]...)
 	router.GET(options.BaseURL+"/categories", wrapper.ListCategories, options.OperationMiddlewares["listCategories"]...)
 	router.DELETE(options.BaseURL+"/categories/:id", wrapper.DeleteCategory, options.OperationMiddlewares["deleteCategory"]...)
 	router.PUT(options.BaseURL+"/categories/:id", wrapper.UpsertCategory, options.OperationMiddlewares["upsertCategory"]...)
@@ -2022,6 +2126,287 @@ func (response UpsertProduct500ApplicationProblemPlusJSONResponse) VisitUpsertPr
 	return err
 }
 
+type DeleteProductImageRequestObject struct {
+	Id     Id `json:"id"`
+	Params DeleteProductImageParams
+}
+
+type DeleteProductImageResponseObject interface {
+	VisitDeleteProductImageResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductImage200ResponseHeaders struct {
+	ETag *string
+}
+
+type DeleteProductImage200Response struct {
+	Headers DeleteProductImage200ResponseHeaders
+}
+
+func (response DeleteProductImage200Response) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	return nil
+}
+
+type DeleteProductImage400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProductImage400ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProductImage401ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProductImage412ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProductImage428ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteProductImage500ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage502ApplicationProblemPlusJSONResponse Error
+
+func (response DeleteProductImage502ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductImage503ApplicationProblemPlusJSONResponse Error
+
+func (response DeleteProductImage503ApplicationProblemPlusJSONResponse) VisitDeleteProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImageRequestObject struct {
+	Id     Id `json:"id"`
+	Params UploadProductImageParams
+	Body   *multipart.Reader
+}
+
+type UploadProductImageResponseObject interface {
+	VisitUploadProductImageResponse(w http.ResponseWriter) error
+}
+
+type UploadProductImage200ResponseHeaders struct {
+	ETag *string
+}
+
+type UploadProductImage200Response struct {
+	Headers UploadProductImage200ResponseHeaders
+}
+
+func (response UploadProductImage200Response) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	return nil
+}
+
+type UploadProductImage400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response UploadProductImage400ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.BadRequestApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UploadProductImage401ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.UnauthorizedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response UploadProductImage412ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionFailedApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage413ApplicationProblemPlusJSONResponse Error
+
+func (response UploadProductImage413ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response UploadProductImage428ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.PreconditionRequiredApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response UploadProductImage500ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.InternalServerErrorApplicationProblemPlusJSONResponse); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage502ApplicationProblemPlusJSONResponse Error
+
+func (response UploadProductImage502ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadProductImage503ApplicationProblemPlusJSONResponse Error
+
+func (response UploadProductImage503ApplicationProblemPlusJSONResponse) VisitUploadProductImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSettingsRequestObject struct {
 }
 
@@ -2260,6 +2645,12 @@ type StrictServerInterface interface {
 	// UpsertProduct Create or update a product
 	// (PUT /products/{id})
 	UpsertProduct(ctx context.Context, request UpsertProductRequestObject) (UpsertProductResponseObject, error)
+	// DeleteProductImage Remove the image from a product
+	// (DELETE /products/{id}/image)
+	DeleteProductImage(ctx context.Context, request DeleteProductImageRequestObject) (DeleteProductImageResponseObject, error)
+	// UploadProductImage Upload an image for a product
+	// (POST /products/{id}/image)
+	UploadProductImage(ctx context.Context, request UploadProductImageRequestObject) (UploadProductImageResponseObject, error)
 	// GetSettings Get settings
 	// (GET /settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
@@ -2641,6 +3032,64 @@ func (sh *strictHandler) UpsertProduct(ctx *echo.Context, id Id, params UpsertPr
 	return nil
 }
 
+// DeleteProductImage operation middleware
+func (sh *strictHandler) DeleteProductImage(ctx *echo.Context, id Id, params DeleteProductImageParams) error {
+	var request DeleteProductImageRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request any) (any, error) {
+		return sh.ssi.DeleteProductImage(ctx.Request().Context(), request.(DeleteProductImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductImage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteProductImageResponseObject); ok {
+		return validResponse.VisitDeleteProductImageResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UploadProductImage operation middleware
+func (sh *strictHandler) UploadProductImage(ctx *echo.Context, id Id, params UploadProductImageParams) error {
+	var request UploadProductImageRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	if reader, err := ctx.Request().MultipartReader(); err != nil {
+		return err
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx *echo.Context, request any) (any, error) {
+		return sh.ssi.UploadProductImage(ctx.Request().Context(), request.(UploadProductImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadProductImage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UploadProductImageResponseObject); ok {
+		return validResponse.VisitUploadProductImageResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetSettings operation middleware
 func (sh *strictHandler) GetSettings(ctx *echo.Context) error {
 	var request GetSettingsRequestObject
@@ -2710,73 +3159,78 @@ func (sh *strictHandler) PatchSettings(ctx *echo.Context, params PatchSettingsPa
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7Fx7Uxu5lv8qqr636sJsYxpDZhNTqVrCJBnP5lVA5t4qwsaiddrW0JY6khrwZPnuW0dSv2zZmDxIcnf+",
-	"odrdehwd/c5TR3yMUjktpABhdDT4GE2AMlD28TAHqoAdQaZAT07kBYhDKS844EcGOlW8MFyKaBA9vS64",
-	"Ak3MBIhy7Unq2saRTicwpdgJrum0yCEaRL7Re4OjPt4nvxpTvBb5bJ8cQ1oq2CfHdArH3MDjY6N4avbJ",
-	"G2omj7dpwbcvd7ZpaSb75CW93joYw+MkiiMzK3BgbRQX4+jmJo6entDxIqmHpVIgDLkEpbkURGaWahCG",
-	"mxnhgnwopQEdE+iNe2T0Ltp7F42WrMJ+DM79+qA0kxOYFss4djyRymzl/BKY55QmGxKX9V4baiAm7scl",
-	"KJ5xUJuk1MCIkeSS5pxRA5ZsOw9JaZ6f0/SiR45xaVQTcyWJhoIqbHgMZsvRQfz29t6JJUtqkfCYnqc7",
-	"/d2Vm/OCXgd2ZntGBYPrZoN+TsJbtA62XsFVjSkLl7UgtQbtawCr/+BRPwnSfhNHyN0pGC8tQ4Z/OVJc",
-	"UDOJ4kjQKXbhLIojBR9KroBFA6NKaC8gk2pKTTSIypKzwERxNMxeUpNOFjnzu4cwAiGdUDEGwjU5pwgU",
-	"KeIQmHffRaOB7TBC8RiRnGpDFKRgkZgpObVfNahLUD1y5OkmmVSkLBB3mlDBCIMc8HmjaU2o0FegNNnr",
-	"PyQ8I9wgOVOuNRfjzR7BbSCU4K8ciDZKijExdIytaJpCYYANiJAk59roGJ9G/9weuYefRg6zlsEOxQ2L",
-	"h9mWY9EyMd1dIqbD7JUUsIS9L0ttyDkQuKapyWdIA7magCCpAmq4GBMqvN4YeM33oQRtSEZ5rskVNxOy",
-	"t9NHVuBXzgjNFVA2I3CNK1y9ICRs5ap+Wq543ih5yXHAMCKL6vMqXP5dQRYNor9tN/Zh233V251JXuGg",
-	"ViAU6EIKDVYesMlxmaag7c9UCgPC4CMtipynFLm8/YdGVn9cc16rJ478LG7O7pYd2PmcmkD4n0s2i7va",
-	"A19XSqGxUS2z12jLZeT4xtsB7WVpekLZc2rgis5WrLxQ8jyH6X/cjQNPlZIqtHJnCKqdRZEqBb2kPKfn",
-	"ORCpiAJTKgHMgtaNYik9cqC9P0qHwlqwWlrcHnmeIqXewKFmQ0kChpQeSpHlPL1HOk9aEp362b1UW4Xr",
-	"/QhrKp38w5Ty3GozL+cKxlwbUMBi14caGEs1IyiI2NDQCxAxLrrzWRue5zipoVxo3FVWpka/E8iJoTCg",
-	"BM2PrdJ15N/j5rnJK5VfI+mVNM9kKdj9kfJWXAh5JUgX+UjLGwWpFIxjw2cOQffHIG+KcE87WpwwzoiQ",
-	"hkxkzgZtn5NJ0PaLNQvxnJWw6JhQtLrSTEBVjmuPvJJmglboimpv/lmPIGrTnCMymZKFJtxoUoBg2NK1",
-	"svZbQQYmnYC1QnM8O6qNwn3LGs5KlrPQKYmWV4GUH4NBY6y/tLGpxg1iT4MiumrQMR9V1LHKcNg2dtgT",
-	"KV9SMfNKWN8fx4+oAZLzKUfYpQAMWHcdR2DUbOsgM86NaKbzPgcXBsZgx76Jo7cCHWep+J/3CZuXDgXo",
-	"6TqbIhUBG4oykipgKGA019Yx8oPZwNbr2UBw6L9gVFhp3V4UR4WSBSjDnWvDWchxR6FFp6JypeZ8s8r7",
-	"artwv1CuZlEcTen1CxBjM4kGO0kSR1Mu6t+BgbwGCASVYMj5rOXA77tntDaXNC+tzdEgDDpB+AWBSGrn",
-	"s14RF2a3H1k6+LScWiqWLK+BQduZPHVRj13xWd1Wnv8BqbHW3PP5BXeexxx/DUy7D6vQUe/mTT0RVYrO",
-	"FkmyowXJaWFlgRpr1Tsb7t50tq3/YC+wUQXV+kqqLlzql50B/rPf2faHId++vZiKhnq00Lpq56C7olSy",
-	"QJz9kqYTLmALN9o6jda2E9s4boFWSPM+s6Y+sOIpaE3HgdF/LadUNGO3P7YHLzUoawuXzDDHBU9cNWuI",
-	"B0PBUPuE+ZD719QYUEjm//ztNNl6dLD1jG5lZx9/vvl7cJH0+hc6051dXRCZJI5EmVv3e02RceSE1rAY",
-	"byEuBU5zGrlcS3QWIPSNU2GLu3FQabdKESDf/6FJpjgbQ48c5DnJOORMW+tQGDLySmdEqAKiG0XjnY2N",
-	"rMxzoqDIaQpTEGZzUW9W/u2QrZH4mNP1HzvSliRJoINT/frAdIZn1EBo+E/U4nxKx/CCi4sFmvYeBrEi",
-	"yoymplTA1iSsshPdBd9qFWQBYu05PpTUOp9z8+wE+aonkGcveAbWG3hdgMAPC6BCmbCQqLClDb4ZS8kI",
-	"xZ6YEUJn1VEaNDj02knP7s8Pkq79mReeH80Mxm34t7EaEngvuF/CPPqhPsM61o7w4OMtbnCXzgnVr6Th",
-	"mXf+dMt5PJcyB2oDD17p5/WX1Kj0hUXFkWhNecLnPa7k0SBJBjaj21L6G6fJzhkq/rP/7Z8mW7tnm4PT",
-	"ZOuBe9V6DFoDw6fwpxTQWt7376otbHI3tbaAOWpjK9uoy1CY/TY5f57y1/y34ds/hzuv+FAPxdGD9HD4",
-	"8/Ci+Nfvh7896vV60XJ1PQxwp5PHy3kGyGTkhLZRqm77DI+SZHGJcWT7nsyKjq18AlSBCtjKOWFoL7c9",
-	"VJvoRVFBVQlpqbiZHSNUHevcnGjB8de5/fWs2r7f/nlSpXetXNivDbMmxhQu8OEik1VgRZ1J945pJHMY",
-	"X9CH/d3/GuObXiqnTa73Qqo/AC4W7Gl0PKXKkGfW4BNaFAQPkEAwcvBmiARwk8N8M/epxnSU9Pq9pLI9",
-	"tODRINrt7fS8dE3s8t2BUC7HsnS6TOqAQ3IEl/Ji7gDR7X59JOFytTZ5keLJpG697ZEhg2khDQgz8KlO",
-	"TfrJHoFLEFUG3g3Yys/5sNEl4hHuVmugexK9cAR3T3lOfTq9Tht7JneOnjrp+nmYnc1lyfvJ3iIzXsjx",
-	"GBhx839SZnr50a0F04MkWTZCTd12KM/Yhng0OD2LI11Op1TNHNWeZEPRWJxGuPPRGfZxIPBsaqOgy3RP",
-	"7ydyfflZxu27sAY/2gcaN3G0l+zc3qeTFsFO/Ue3d5rPCX2tDTuq5KwWjYJytWL/NB+LLS5WSbETPCoI",
-	"bWvwrMrqd7Iy8yJ3zMdiWG0kaPNEstkXy+YddtJBN/NoufkiiFijT+vE5d8CRLhpaJipcPlqTDOXGm6F",
-	"UVksh9GhAnfOTARc2dF8yjqIriCO3hbfC4527gdHa0CiPkL7/hSROyZrbfgK+Hysjnputqu6FyRpDAEk",
-	"PVHyymaU6CUfuyNFEKyQXBhbNAOscsK7p0ixzUH5T7QoeuR3V4ejia/OgWt3mFJ5IQxiknHB7Alm6gFc",
-	"ZVYsfDWYUIGUO7JBB8zY2gKa55p07CUxkozBzOM+5LW8xn6HFVcWzGho25om3WP96Cb2dvdDCWrWmF2f",
-	"c1tuXZf0s4y7k5mOVwRN9Um3rcioGc1AcGCeT1EcJMSdWX6rid93U5+3s3He7WlVaN2VmyvGq+rMPsuP",
-	"2k36IaeAcQWpsQEGYrmWqYP8ChNELW/e0fKTFw2NNUNElx70C6LjQmRjpcsPGpIfOwpWEpQKiJC3DGL3",
-	"jLglNkfwI7t3owEZuR1+7/Z7RDZaCEhzLmoMbMZkZCO09xU/feMaQNWBsLNr1oJi+6ajrQ4YkQ3qJvCl",
-	"B1y7dnPnxJtOH7TChRfSWbiucWsSnooH8+ufX//ySQZs7/YudY3BNzFg2Le/1rqq4p9VNm+uXkdVQmKo",
-	"Qku2lvlr+eN3tn4bsgCBCdlLTskVF0xe9XIPGGf9bH3A9r9+PdrskecgQFmTZvWOFZY3/334lFRqIyba",
-	"SF8BPLWJmlZ961y51W2FrjqVhSt1nV+xdwMdq1rm1SuVqt0/NKk8Zrfqgo5hqbmsw47PMpZ3U4XrEHzP",
-	"wjxfsXxz82OI5arYxFBliJcSpz7pQr1QUNJ8qt4nP8ewItbFfbRnX52CsKqs3J+rNePFBGg6ccRwo5tz",
-	"tR75xZbUslZje9aGsshFmpesqu/xtVfcTa5lqVI3oSrNZODPWrSv+Vms/9Htczt/YufqhFABYN1ZMWsZ",
-	"m9wWJV0AFDiEtHLcUGgm1Ph6tQm9hPmpgqk1rs1hw+Bw5P1lgrV2mUGgfqS6C9BaT2vffrAAvUnEcW3C",
-	"4GuBvfVyHvLbHzm7cYBHQIagbx0aTUZVqdaAvIvelUmym3o42x/wLhrtt0ug6wLHbskbhkwIP9+XMJ5l",
-	"eEmB7CWPFrouqY0ckKm8tIWujmpniDKutOkRXydU1Y9tOeqwTj2ETyeHFXbubBiGzIZOt7XyRf3rZYRP",
-	"2hzg2q+R3WvW6c4php01vKVAqaYVoId361pXLH576XPoIbTer2VCF0dFGbAreD2FFK21aUK1zaA2UB91",
-	"yiIH5KcRehQu60A2+snOZryObGInd6cDOyWbcSWr3N9hiKurHAK4rT31Z5IdyXQJDh+L2ELVBqqNFcFg",
-	"MyRsbwsNytyXsK3TtLkR4mTzK+QQq9Wun4j+CvOu0DBYpOGAwT6nuNUnP++fdicJn0X7X2r1+1Kr7kyA",
-	"1LfQ1lCw6NVUOvPLuPHVaGs48VXT79WFr+n7RAf+TcXYr6iv2lVQK7z3ein/hr570bC5wnj9qovwL+q1",
-	"99peu59h3mnfyGy1va3CqSr7KjfA+6dEivraCoNLnsLmEl9/35U5UYzFtBUYe7WlcXXr/GwNen9/xb7M",
-	"+ae6+R5j342XXzH7Gzn5/8999qJGQ0DaljjsJ+5uL9dk7LOkbL42+u3b4S+bMdGymaLyUYjMMjw2ICkV",
-	"eNnYlvzl1ODl66f+4rEU3YgA56q8xh5xljEYFFQS0E929ueuIreqoOwxQ4+8LVg9zm2BQ30L0n9ZfY28",
-	"RUeyv4ZmCauIuK0VrhQ3Bql+5SOTgMyTJ9JUd8Z08yVJnAnGo+ZqCstQfz+Wi/b9eD8uah8uWoZ+aShz",
-	"Twrl+4hkqsXecyDTmXa5Dv0Ow5g7UP4jBTF/xSQ+JllpQNBd061i+pUBSdmurd/vXDlvaa31lNWCqnoO",
-	"5rgp27975dv8ndsf1Nt+DqZ9faHasvqVtfnhfw5y6OOwzjb1yF2c7I4pXDB2PvOG3xauPYeszxucrLWp",
-	"d7Q+2dc1FN3L1F+g9jKIwL+03VcUFguwW8Rl7jS2e/nh9AzR5VxCB8pwPD+R2kRxVKo8GkT+/zJZYPoJ",
-	"g7eQcItAGI9OqwI7R+pNvRO+jhZLvKqEhitkYMGLkZ1/oWNbBwY67BwmtgJ437WVo7qJg2tp8dj3qd/c",
-	"nN383wA=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

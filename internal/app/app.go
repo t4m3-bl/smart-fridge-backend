@@ -5,6 +5,7 @@ import (
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/repository/postgres"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
+	"smart-fridge-backend/internal/storage"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/utils/cookie"
@@ -55,7 +56,10 @@ var infrastructure = fx.Module("infrastructure",
 
 var usecases = fx.Module("usecases",
 	fx.Provide(
-		fx.Annotate(newAccessTokenManager, fx.As(new(service.AccessTokenGenerator))),
+		fx.Annotate(newAccessTokenManager,
+			fx.As(new(service.AccessTokenGenerator)),
+			fx.As(new(httpserver.AccessTokenVerifier)),
+		),
 		fx.Annotate(newRefreshTokenManager, fx.As(new(service.RefreshTokenGenerator))),
 		fx.Annotate(service.NewSessionService,
 			fx.As(fx.Self()),
@@ -64,7 +68,7 @@ var usecases = fx.Module("usecases",
 		fx.Annotate(newOAuthProviders, fx.As(new(service.OAuthProviders))),
 		fx.Annotate(newOAuthTokensManager, fx.As(new(service.OauthTokensGenerator))),
 		service.NewAuthService,
-		service.NewProductService,
+		newProductService,
 		service.NewCategoryService,
 		service.NewSettingsService,
 	),
@@ -72,7 +76,7 @@ var usecases = fx.Module("usecases",
 
 var transport = fx.Module("transport",
 	fx.Provide(
-		httpserver.NewAuthenticator,
+		fx.Annotate(httpserver.NewAuthenticator, fx.As(new(httpserver.OpenApiAuthenticator))),
 		newCookieFactory,
 		controllers.NewAuthController,
 		controllers.NewProductController,
@@ -83,6 +87,18 @@ var transport = fx.Module("transport",
 	),
 	fx.Invoke(httpserver.RegisterLifecycle),
 )
+
+func newProductService(cfg *config.Config, repo service.ProductRepository) (*service.ProductService, error) {
+	var images service.ProductImageStorage
+	if cfg.Storage.Enabled() {
+		store, err := storage.New(context.Background(), cfg.Storage)
+		if err != nil {
+			return nil, err
+		}
+		images = store
+	}
+	return service.NewProductService(repo, images, cfg.Storage.DownloadTTL), nil
+}
 
 func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
 	return argon2id.NewArgon2idHasher(argon2id.Params{

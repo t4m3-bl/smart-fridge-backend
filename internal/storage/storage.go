@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"smart-fridge-backend/internal/config"
 	"time"
 
@@ -20,6 +21,13 @@ type S3Storage struct {
 }
 
 func New(ctx context.Context, cfg config.Storage) (*S3Storage, error) {
+	endpoint, err := url.Parse(cfg.Endpoint)
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil {
+		return nil, fmt.Errorf("storage endpoint must be an HTTP(S) URL")
+	}
+	if cfg.Bucket == "" || cfg.Region == "" || cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
+		return nil, fmt.Errorf("storage bucket, region, access key ID and secret access key are required")
+	}
 	awsCfg, err := awscfg.LoadDefaultConfig(
 		ctx,
 		awscfg.WithRegion(cfg.Region),
@@ -36,6 +44,7 @@ func New(ctx context.Context, cfg config.Storage) (*S3Storage, error) {
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(cfg.Endpoint)
 		o.UsePathStyle = true
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	return &S3Storage{

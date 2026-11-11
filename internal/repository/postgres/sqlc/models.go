@@ -41,7 +41,7 @@ type Product struct {
 	Name                  string
 	Description           *string
 	Quantity              *string
-	ImageLink             *string
+	ImageKey              *string
 	ManufacturedAt        *time.Time
 	ExpiresAt             time.Time
 	OpenedAt              *time.Time

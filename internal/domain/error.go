@@ -6,15 +6,17 @@ import (
 )
 
 var (
-	ErrVersionConflict      = errors.New("version_conflict")
-	ErrNotFound             = errors.New("not_found")
-	ErrAlreadyExists        = errors.New("already_exists")
-	ErrInvalidCredentials   = errors.New("invalid_credentials")
-	ErrInvalidSession       = errors.New("invalid_session")
-	ErrUnprocessableEntity  = errors.New("unprocessable_entity")
-	ErrUnknownProvider      = errors.New("unknown_provider")
-	ErrProviderUnavailable  = errors.New("provider_unavailable")
-	ErrPreconditionRequired = errors.New("precondition_required")
+	ErrImageStorageUnavailable = errors.New("image_storage_unavailable")
+	ErrImageStorageFailed      = errors.New("image_storage_failed")
+	ErrVersionConflict         = errors.New("version_conflict")
+	ErrNotFound                = errors.New("not_found")
+	ErrAlreadyExists           = errors.New("already_exists")
+	ErrInvalidCredentials      = errors.New("invalid_credentials")
+	ErrInvalidSession          = errors.New("invalid_session")
+	ErrUnprocessableEntity     = errors.New("unprocessable_entity")
+	ErrUnknownProvider         = errors.New("unknown_provider")
+	ErrProviderUnavailable     = errors.New("provider_unavailable")
+	ErrPreconditionRequired    = errors.New("precondition_required")
 )
 
 type ValidationError struct {

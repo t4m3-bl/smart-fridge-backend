@@ -2,16 +2,19 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"smart-fridge-backend/internal/config"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type S3Storage struct {
@@ -23,11 +26,12 @@ type S3Storage struct {
 func New(ctx context.Context, cfg config.Storage) (*S3Storage, error) {
 	endpoint, err := url.Parse(cfg.Endpoint)
 	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil {
-		return nil, fmt.Errorf("storage endpoint must be an HTTP(S) URL")
+		return nil, errors.New("storage endpoint must be an HTTP(S) URL")
 	}
 	if cfg.Bucket == "" || cfg.Region == "" || cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
-		return nil, fmt.Errorf("storage bucket, region, access key ID and secret access key are required")
+		return nil, errors.New("storage bucket, region, access key ID and secret access key are required")
 	}
+
 	awsCfg, err := awscfg.LoadDefaultConfig(
 		ctx,
 		awscfg.WithRegion(cfg.Region),
@@ -54,40 +58,61 @@ func New(ctx context.Context, cfg config.Storage) (*S3Storage, error) {
 	}, nil
 }
 
-func (s *S3Storage) Upload(ctx context.Context, fileKey string, fileReader io.Reader, contentType string) error {
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+func (s *S3Storage) PresignPut(
+	ctx context.Context,
+	key string,
+	contentType string,
+	uploadTTL time.Duration,
+) (string, map[string]string, error) {
+	request, err := s.presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(fileKey),
-		Body:        fileReader,
+		Key:         aws.String(key),
 		ContentType: aws.String(contentType),
+	},
+		s3.WithPresignExpires(uploadTTL),
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("presign image upload: %w", err)
+	}
+
+	return request.URL, s.getHeaders(request), nil
+}
+
+func (s *S3Storage) ObjectExists(ctx context.Context, key string) (bool, error) {
+	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
 	})
 	if err != nil {
-		return fmt.Errorf("upload image: %w", err)
+		if _, ok := errors.AsType[*types.NotFound](err); ok {
+			return false, nil
+		}
+		return false, fmt.Errorf("head object %s: %w", key, err)
 	}
 
-	return nil
+	return true, nil
 }
 
-func (s *S3Storage) GetURL(ctx context.Context, fileKey string, expiresAfter time.Duration) (string, error) {
-	presignedReq, err := s.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(fileKey),
-	}, s3.WithPresignExpires(expiresAfter))
+func (s *S3Storage) getHeaders(request *v4.PresignedHTTPRequest) map[string]string {
+	headers := make(map[string]string, len(request.SignedHeader))
+	for name, values := range request.SignedHeader {
+		if strings.EqualFold(name, "host") || len(values) == 0 {
+			continue
+		}
 
-	if err != nil {
-		return "", fmt.Errorf("get image url: %w", err)
+		headers[name] = strings.Join(values, ",")
 	}
 
-	return presignedReq.URL, nil
+	return headers
 }
 
-func (s *S3Storage) Delete(ctx context.Context, fileKey string) error {
+func (s *S3Storage) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(fileKey),
+		Key:    aws.String(key),
 	})
 	if err != nil {
-		return fmt.Errorf("delete image: %w", err)
+		return fmt.Errorf("delete image %s: %w", key, err)
 	}
 
 	return nil

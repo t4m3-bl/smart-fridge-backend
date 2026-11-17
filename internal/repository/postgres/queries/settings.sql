@@ -8,9 +8,8 @@ INSERT INTO settings (user_id) VALUES (@user_id) ON CONFLICT (user_id) DO NOTHIN
 UPDATE settings SET
     has_notifications = COALESCE(sqlc.narg('has_notifications'), has_notifications),
     notification_time = COALESCE(sqlc.narg('notification_time'), notification_time),
-    timezone          = COALESCE(sqlc.narg('timezone'), timezone),
-    version           = version + 1
-WHERE user_id = @user_id AND version = @base_version::int
+    timezone          = COALESCE(sqlc.narg('timezone'), timezone)
+WHERE user_id = @user_id
 RETURNING *;
 
 -- name: ListIndicators :many

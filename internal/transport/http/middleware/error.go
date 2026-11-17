@@ -11,89 +11,123 @@ import (
 
 const MIMEApplicationProblemJSON = "application/problem+json"
 
+type errMapping struct {
+	target  error
+	status  int
+	code    string
+	message string
+}
+
+//nolint:gochecknoglobals
+var domainErrMappings = []errMapping{
+	{
+		domain.ErrPreconditionRequired,
+		http.StatusPreconditionRequired,
+		"precondition_required",
+		"a version precondition is required",
+	},
+	{
+		domain.ErrImageStorageUnavailable,
+		http.StatusServiceUnavailable,
+		"image_storage_unavailable",
+		"image storage is not configured",
+	},
+	{
+		domain.ErrImageStorageFailed,
+		http.StatusBadGateway,
+		"image_storage_failed",
+		"image storage request failed",
+	},
+	{
+		domain.ErrVersionConflict,
+		http.StatusPreconditionFailed,
+		"version_conflict",
+		"",
+	},
+	{
+		domain.ErrAlreadyExists,
+		http.StatusConflict,
+		"already_exists",
+		"",
+	},
+	{
+		domain.ErrInvalidCredentials,
+		http.StatusUnauthorized,
+		"invalid_credentials",
+		"",
+	},
+	{
+		domain.ErrInvalidSession,
+		http.StatusUnauthorized,
+		"invalid_session",
+		"",
+	},
+	{
+		domain.ErrNotFound,
+		http.StatusNotFound,
+		"not_found",
+		"",
+	},
+	{
+		domain.ErrUnknownProvider,
+		http.StatusNotFound,
+		"unknown_provider",
+		"",
+	},
+	{
+		domain.ErrUnprocessableEntity,
+		http.StatusUnprocessableEntity,
+		"unprocessable_entity",
+		"",
+	},
+	{
+		domain.ErrProviderUnavailable,
+		http.StatusBadGateway,
+		"provider_unavailable",
+		"",
+	},
+}
+
 func HTTPErrorHandler(c *echo.Context, err error) {
 	if resp, uErr := echo.UnwrapResponse(c.Response()); uErr == nil && resp.Committed {
 		return
 	}
 
-	status := http.StatusInternalServerError
-	problem := api.Error{
-		Code:    "internal_error",
-		Message: "internal server error",
-	}
-
-	if vErr, ok := errors.AsType[domain.ValidationError](err); ok {
-		status = http.StatusBadRequest
-		problem.Code = "validation_error"
-		problem.Message = vErr.Error()
-	} else {
-		switch {
-		case errors.Is(err, domain.ErrPreconditionRequired):
-			status = http.StatusPreconditionRequired
-			problem.Code = "precondition_required"
-			problem.Message = "a version precondition is required"
-
-		case errors.Is(err, domain.ErrImageStorageUnavailable):
-			status = http.StatusServiceUnavailable
-			problem.Code = "image_storage_unavailable"
-			problem.Message = "image storage is not configured"
-
-		case errors.Is(err, domain.ErrImageStorageFailed):
-			status = http.StatusBadGateway
-			problem.Code = "image_storage_failed"
-			problem.Message = "image storage request failed"
-
-		case errors.Is(err, domain.ErrVersionConflict):
-			status = http.StatusPreconditionFailed
-			problem.Code = "version_conflict"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrAlreadyExists):
-			status = http.StatusConflict
-			problem.Code = "already_exists"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrInvalidCredentials):
-			status = http.StatusUnauthorized
-			problem.Code = "invalid_credentials"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrInvalidSession):
-			status = http.StatusUnauthorized
-			problem.Code = "invalid_session"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrNotFound):
-			status = http.StatusNotFound
-			problem.Code = "not_found"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrUnknownProvider):
-			status = http.StatusNotFound
-			problem.Code = "unknown_provider"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrUnprocessableEntity):
-			status = http.StatusUnprocessableEntity
-			problem.Code = "unprocessable_entity"
-			problem.Message = err.Error()
-
-		case errors.Is(err, domain.ErrProviderUnavailable):
-			status = http.StatusBadGateway
-			problem.Code = "provider_unavailable"
-			problem.Message = err.Error()
-
-		default:
-			if s := echo.StatusCode(err); s != 0 {
-				status = s
-				problem.Code = http.StatusText(s)
-				problem.Message = err.Error()
-			}
-		}
-	}
+	status, problem := mapError(err)
 
 	c.Response().Header().Set(echo.HeaderContentType, MIMEApplicationProblemJSON)
 	if jsonErr := c.JSON(status, problem); jsonErr != nil {
 		c.Logger().Error(jsonErr.Error())
+	}
+}
+
+func mapError(err error) (int, api.Error) {
+	if vErr, ok := errors.AsType[domain.ValidationError](err); ok {
+		return http.StatusBadRequest, api.Error{
+			Code:    "validation_error",
+			Message: vErr.Error(),
+		}
+	}
+
+	for _, m := range domainErrMappings {
+		if errors.Is(err, m.target) {
+			msg := m.message
+			if msg == "" {
+				msg = err.Error()
+			}
+			return m.status, api.Error{Code: m.code, Message: msg}
+		}
+	}
+
+	if s := echo.StatusCode(err); s != 0 {
+		return s, api.Error{
+			Code:    http.StatusText(s),
+			Message: err.Error(),
+		}
+	}
+
+	return http.StatusInternalServerError, api.Error{
+		Code:    "internal_error",
+		Message: "internal server error",
 	}
 }

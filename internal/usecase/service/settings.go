@@ -26,8 +26,8 @@ func (s *SettingsService) Get(ctx context.Context, userID domain.UserID) (*domai
 	return res, nil
 }
 
-func (s *SettingsService) Patch(ctx context.Context, userID domain.UserID, base int32, c domain.SettingsChanges) (*domain.Settings, error) {
-	p, err := domain.NewSettingsPatch(userID, base, c)
+func (s *SettingsService) Patch(ctx context.Context, userID domain.UserID, c domain.SettingsChanges) (*domain.Settings, error) {
+	p, err := domain.NewSettingsPatch(userID, c)
 	if err != nil {
 		return nil, err
 	}

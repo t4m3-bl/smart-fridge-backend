@@ -2,21 +2,19 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
-	"smart-fridge-backend/internal/transport/http/utils/header"
 	"smart-fridge-backend/internal/usecase/service"
 	"time"
 )
 
 type SettingsController struct {
-	service *service.SettingsService
+	settings *service.SettingsService
 }
 
 func NewSettingController(s *service.SettingsService) *SettingsController {
-	return &SettingsController{s}
+	return &SettingsController{settings: s}
 }
 
 func (c *SettingsController) GetSettings(ctx context.Context, _ api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
@@ -25,17 +23,13 @@ func (c *SettingsController) GetSettings(ctx context.Context, _ api.GetSettingsR
 		return nil, err
 	}
 
-	s, err := c.service.Get(ctx, domain.UserID(userID))
+	s, err := c.settings.Get(ctx, domain.UserID(userID))
 	if err != nil {
 		return nil, err
 	}
 
-	tag := new(fmt.Sprintf(`"%d"`, s.Version))
 	return api.GetSettings200JSONResponse{
-		SettingsSuccessJSONResponse: api.SettingsSuccessJSONResponse{
-			Body:    newSettingsOutput(s),
-			Headers: api.SettingsSuccessResponseHeaders{ETag: tag},
-		},
+		SettingsSuccessJSONResponse: newSettingsSuccessResponse(s),
 	}, nil
 }
 
@@ -45,27 +39,18 @@ func (c *SettingsController) PatchSettings(ctx context.Context, r api.PatchSetti
 		return nil, err
 	}
 
-	base, err := header.GetVersion(*r.Params.IfMatch)
-	if err != nil {
-		return nil, err
-	}
-
 	changes, err := toSettingsChanges(*r.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := c.service.Patch(ctx, domain.UserID(userID), base, changes)
+	s, err := c.settings.Patch(ctx, domain.UserID(userID), changes)
 	if err != nil {
 		return nil, err
 	}
 
-	tag := new(fmt.Sprintf(`"%d"`, s.Version))
 	return api.PatchSettings200JSONResponse{
-		SettingsSuccessJSONResponse: api.SettingsSuccessJSONResponse{
-			Body:    newSettingsOutput(s),
-			Headers: api.SettingsSuccessResponseHeaders{ETag: tag},
-		},
+		SettingsSuccessJSONResponse: newSettingsSuccessResponse(s),
 	}, nil
 }
 
@@ -88,19 +73,19 @@ func toSettingsChanges(b api.PatchSettingsJSONRequestBody) (domain.SettingsChang
 		}
 		c.Indicators = &list
 	}
+
 	return c, nil
 }
 
-func newSettingsOutput(s *domain.Settings) api.Settings {
+func newSettingsSuccessResponse(s *domain.Settings) api.SettingsSuccessJSONResponse {
 	inds := make([]api.Indicator, 0, len(s.Indicators))
 	for _, i := range s.Indicators {
 		inds = append(inds, api.Indicator{Color: i.Color, MaxDays: i.MaxDays})
 	}
-	return api.Settings{
+	return api.SettingsSuccessJSONResponse{
 		HasNotifications: &s.HasNotifications,
 		NotificationTime: new(time.Time{}.Add(s.NotificationTime).Format(time.TimeOnly)),
 		Timezone:         &s.Timezone,
 		Indicators:       &inds,
-		Version:          &s.Version,
 	}
 }

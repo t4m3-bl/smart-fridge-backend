@@ -39,6 +39,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, input *openapi3filter.
 		return fmt.Errorf("authenticator: %w", err)
 	}
 
+	//nolint:contextcheck
 	middleware.SetUserID(eCtx, uuid.UUID(userID))
 	return nil
 }

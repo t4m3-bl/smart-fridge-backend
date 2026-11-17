@@ -12,10 +12,8 @@ import (
 )
 
 type Category struct {
-	UserID  uuid.UUID
-	ID      uuid.UUID
-	Name    string
-	Version int32
+	ID   int64
+	Name string
 }
 
 type Identity struct {
@@ -35,9 +33,9 @@ type Indicator struct {
 }
 
 type Product struct {
-	UserID                uuid.UUID
 	ID                    uuid.UUID
-	CategoryID            uuid.UUID
+	UserID                uuid.UUID
+	CategoryID            int64
 	Name                  string
 	Description           *string
 	Quantity              *string
@@ -66,7 +64,6 @@ type Setting struct {
 	HasNotifications bool
 	NotificationTime pgtype.Time
 	Timezone         string
-	Version          int32
 }
 
 type User struct {

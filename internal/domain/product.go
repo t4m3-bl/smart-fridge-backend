@@ -19,11 +19,10 @@ const (
 type ProductID uuid.UUID
 
 type Product struct {
-	ID        ProductID
-	UserID    UserID
-	Version   int32
-	ImageKey  *string
-	ImageLink *string
+	ID       ProductID
+	UserID   UserID
+	Version  int32
+	ImageKey *string
 	ProductData
 }
 
@@ -39,43 +38,78 @@ type ProductData struct {
 }
 
 func (d ProductData) Validate() error {
+	if err := d.validateStrings(); err != nil {
+		return err
+	}
+	if d.CategoryID <= 0 {
+		return NewValidationErr("categoryId", "must be greater than 0")
+	}
+	return d.validateDates()
+}
+
+func (d ProductData) validateStrings() error {
 	if n := utf8.RuneCountInString(d.Name); n < 1 || n > MaxNameLen {
 		return NewValidationErr("name", fmt.Sprintf("must be 1..%d characters", MaxNameLen))
 	}
-
-	if uuid.UUID(d.CategoryID) == uuid.Nil {
-		return NewValidationErr("categoryId", "category id must not be nil")
-	}
-
 	if d.Description != nil && utf8.RuneCountInString(*d.Description) > MaxDescriptionLen {
 		return NewValidationErr("description", fmt.Sprintf("must be at most %d characters", MaxDescriptionLen))
 	}
-
 	if d.Quantity != nil && utf8.RuneCountInString(*d.Quantity) > MaxQuantityLen {
 		return NewValidationErr("quantity", fmt.Sprintf("must be at most %d characters", MaxQuantityLen))
-	}
-
-	if d.ExpiresAt.IsZero() {
-		return NewValidationErr("expiresAt", "expiration date is required")
-	}
-
-	if d.ManufacturedAt != nil {
-		if d.ManufacturedAt.After(d.ExpiresAt) {
-			return NewValidationErr("manufacturedAt", "manufactured at is after expiration")
-		}
-		if d.OpenedAt != nil && d.OpenedAt.Before(*d.ManufacturedAt) {
-			return NewValidationErr("openedAt", "opened at is before manufactured at")
-		}
-	}
-
-	if s := d.ShelfLifeAfterOpening; s != nil && (*s < MinShelfAfterOpeningDays || *s > MaxShelfAfterOpeningDays) {
-		return NewValidationErr("shelfLifeAfterOpening",
-			fmt.Sprintf("must be between %d and %d days", MinShelfAfterOpeningDays, MaxShelfAfterOpeningDays))
 	}
 	return nil
 }
 
-func NewProduct(id ProductID, userID UserID, version int32, data ProductData) (*Product, error) {
+func (d ProductData) validateDates() error {
+	if d.ExpiresAt.IsZero() {
+		return NewValidationErr(
+			"expiresAt",
+			"expiration date is required",
+		)
+	}
+
+	if d.ManufacturedAt != nil &&
+		d.ManufacturedAt.After(d.ExpiresAt) {
+		return NewValidationErr(
+			"manufacturedAt",
+			"manufactured at is after expiration",
+		)
+	}
+
+	if d.OpenedAt != nil {
+		if d.OpenedAt.After(d.ExpiresAt) {
+			return NewValidationErr(
+				"openedAt",
+				"opened at is after expiration",
+			)
+		}
+
+		if d.ManufacturedAt != nil &&
+			d.OpenedAt.Before(*d.ManufacturedAt) {
+			return NewValidationErr(
+				"openedAt",
+				"opened at is before manufactured at",
+			)
+		}
+	}
+
+	if s := d.ShelfLifeAfterOpening; s != nil &&
+		(*s < MinShelfAfterOpeningDays ||
+			*s > MaxShelfAfterOpeningDays) {
+		return NewValidationErr(
+			"shelfLifeAfterOpening",
+			fmt.Sprintf(
+				"must be between %d and %d days",
+				MinShelfAfterOpeningDays,
+				MaxShelfAfterOpeningDays,
+			),
+		)
+	}
+
+	return nil
+}
+
+func NewProduct(id ProductID, userID UserID, version int32, imageKey *string, data ProductData) (*Product, error) {
 	if uuid.UUID(id) == uuid.Nil {
 		return nil, NewValidationErr("id", "product id must not be nil")
 	}
@@ -94,10 +128,7 @@ func NewProduct(id ProductID, userID UserID, version int32, data ProductData) (*
 		ID:          id,
 		UserID:      userID,
 		Version:     version,
+		ImageKey:    imageKey,
 		ProductData: data,
 	}, nil
-}
-
-func (p *Product) UpdateVersion() {
-	p.Version++
 }

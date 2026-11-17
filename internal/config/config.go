@@ -86,9 +86,7 @@ type Storage struct {
 	AccessKeyID     string `mapstructure:"access_key_id"`
 	SecretAccessKey string `mapstructure:"secret_access_key"`
 
-	UploadTTL    time.Duration `mapstructure:"upload_ttl"`
-	DownloadTTL  time.Duration `mapstructure:"download_ttl"`
-	MaxImageSize int64         `mapstructure:"max_image_size"`
+	UploadTTL time.Duration `mapstructure:"upload_ttl" validate:"required,gt=0"`
 }
 
 func (s Storage) Enabled() bool {
@@ -163,12 +161,6 @@ func (c *Config) customValidate() error {
 		errs = append(errs, errors.New("auth.jwt.refresh_ttl must be greater than auth.jwt.access_ttl"))
 	}
 
-	if c.Storage.MaxImageSize <= 0 || c.Storage.MaxImageSize > 20*1024*1024 {
-		errs = append(errs, errors.New("storage.max_image_size must be between 1 byte and 20 MiB"))
-	}
-	if c.Storage.DownloadTTL < time.Second || c.Storage.DownloadTTL > 7*24*time.Hour {
-		errs = append(errs, errors.New("storage.download_ttl must be between 1 second and 7 days"))
-	}
 	return errors.Join(errs...)
 }
 
@@ -184,8 +176,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.swagger_enabled", false)
 
 	v.SetDefault("database.url", "")
-	v.SetDefault("storage.max_image_size", 5*1024*1024)
-	v.SetDefault("storage.download_ttl", "15m")
+
+	v.SetDefault("storage.upload_ttl", "15m")
 
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.jwt.access_ttl", "15m")

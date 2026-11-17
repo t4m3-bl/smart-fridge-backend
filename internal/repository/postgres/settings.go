@@ -23,7 +23,6 @@ func NewSettingsRepository(pool *pgxpool.Pool) *SettingsRepository {
 	return &SettingsRepository{pool: pool, q: sqlc.New(pool)}
 }
 
-// Get создаёт настройки по умолчанию при первом обращении.
 func (r *SettingsRepository) Get(ctx context.Context, userID domain.UserID) (*domain.Settings, error) {
 	s, err := r.read(ctx, userID)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -80,7 +79,6 @@ func (r *SettingsRepository) Patch(ctx context.Context, p *domain.SettingsPatch)
 			HasNotifications: p.HasNotifications,
 			NotificationTime: toPgTime(p.NotificationTime),
 			Timezone:         p.Timezone,
-			BaseVersion:      p.BaseVersion,
 		})
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -105,7 +103,7 @@ func (r *SettingsRepository) Patch(ctx context.Context, p *domain.SettingsPatch)
 			}
 		}
 
-		inds, err := q.ListIndicators(ctx, uid) // внутри транзакции видны свои изменения
+		inds, err := q.ListIndicators(ctx, uid)
 		if err != nil {
 			return err
 		}
@@ -121,7 +119,7 @@ func (r *SettingsRepository) Patch(ctx context.Context, p *domain.SettingsPatch)
 
 func toPgTime(d *time.Duration) pgtype.Time {
 	if d == nil {
-		return pgtype.Time{} // Valid=false: NULL, COALESCE оставит прежнее значение
+		return pgtype.Time{}
 	}
 	return pgtype.Time{Microseconds: d.Microseconds(), Valid: true}
 }
@@ -133,7 +131,6 @@ func toSettings(row sqlc.Setting, inds []sqlc.Indicator) *domain.Settings {
 		NotificationTime: time.Duration(row.NotificationTime.Microseconds) * time.Microsecond,
 		Timezone:         row.Timezone,
 		Indicators:       make([]domain.Indicator, 0, len(inds)),
-		Version:          row.Version,
 	}
 	for _, i := range inds {
 		s.Indicators = append(s.Indicators, domain.Indicator{Color: i.Color, MaxDays: i.MaxDays})

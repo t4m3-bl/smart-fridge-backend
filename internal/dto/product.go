@@ -6,9 +6,23 @@ import (
 	"github.com/google/uuid"
 )
 
-type ProductInput struct {
-	ProductID   uuid.UUID
-	UserID      uuid.UUID
+type CreateProductInput struct {
+	OperationID uuid.UUID
+	ProductID   domain.ProductID
 	Data        domain.ProductData
-	BaseVersion int32
+	ImageKey    *string
+}
+
+type UpdateProductInput struct {
+	OperationID     uuid.UUID
+	ProductID       domain.ProductID
+	ExpectedVersion int32
+	Data            domain.ProductData
+	ImageKey        *string
+}
+
+type DeleteProductInput struct {
+	OperationID     uuid.UUID
+	ProductID       domain.ProductID
+	ExpectedVersion int32
 }

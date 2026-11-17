@@ -5,7 +5,7 @@ import (
 	"smart-fridge-backend/internal/config"
 	"smart-fridge-backend/internal/repository/postgres"
 	"smart-fridge-backend/internal/repository/postgres/sqlc"
-	"smart-fridge-backend/internal/storage"
+	"smart-fridge-backend/internal/repository/storage"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/controllers"
 	"smart-fridge-backend/internal/transport/http/utils/cookie"
@@ -35,8 +35,9 @@ func New(cfg *config.Config) *fx.App {
 var infrastructure = fx.Module("infrastructure",
 	fx.Provide(
 		newPasswordHasher,
+		newImageStorage,
 		fx.Annotate(postgres.NewProductRepository, fx.As(new(service.ProductRepository))),
-		fx.Annotate(postgres.NewCategoryRepository, fx.As(new(service.CategoryRepository))),
+		fx.Annotate(postgres.NewCategoryRepository, fx.As(new(controllers.CategoryRepository))),
 		fx.Annotate(postgres.NewSettingsRepository, fx.As(new(service.SettingsRepository))),
 		fx.Annotate(newPool,
 			fx.As(fx.Self()),
@@ -69,7 +70,7 @@ var usecases = fx.Module("usecases",
 		fx.Annotate(newOAuthTokensManager, fx.As(new(service.OauthTokensGenerator))),
 		service.NewAuthService,
 		newProductService,
-		service.NewCategoryService,
+		newProductImageService,
 		service.NewSettingsService,
 	),
 )
@@ -80,6 +81,7 @@ var transport = fx.Module("transport",
 		newCookieFactory,
 		controllers.NewAuthController,
 		controllers.NewProductController,
+		controllers.NewImageController,
 		controllers.NewCategoryController,
 		controllers.NewSettingController,
 		fx.Annotate(httpserver.NewHandler, fx.As(new(api.StrictServerInterface))),
@@ -88,16 +90,15 @@ var transport = fx.Module("transport",
 	fx.Invoke(httpserver.RegisterLifecycle),
 )
 
-func newProductService(cfg *config.Config, repo service.ProductRepository) (*service.ProductService, error) {
-	var images service.ProductImageStorage
-	if cfg.Storage.Enabled() {
-		store, err := storage.New(context.Background(), cfg.Storage)
-		if err != nil {
-			return nil, err
-		}
-		images = store
-	}
-	return service.NewProductService(repo, images, cfg.Storage.DownloadTTL), nil
+func newProductService(repo service.ProductRepository, imageStorage service.ImageStorage) *service.ProductService {
+	return service.NewProductService(repo, imageStorage)
+}
+
+func newProductImageService(cfg *config.Config, imageStorage service.ImageStorage) *service.ProductImageService {
+	return service.NewProductImageService(
+		imageStorage,
+		cfg.Storage.UploadTTL,
+	)
 }
 
 func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
@@ -112,6 +113,10 @@ func newPasswordHasher(cfg *config.Config) service.PasswordHasher {
 
 func newPool(cfg *config.Config) (*pgxpool.Pool, error) {
 	return postgres.NewPool(context.Background(), cfg.Database.URL)
+}
+
+func newImageStorage(cfg *config.Config) (service.ImageStorage, error) {
+	return storage.New(context.Background(), cfg.Storage)
 }
 
 func newAccessTokenManager(cfg *config.Config) (*tokens.JWTTokenManager, error) {

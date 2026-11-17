@@ -53,7 +53,7 @@ func (q *Queries) DeleteIndicators(ctx context.Context, userID uuid.UUID) error 
 }
 
 const getSettings = `-- name: GetSettings :one
-SELECT user_id, has_notifications, notification_time, timezone, version FROM settings WHERE user_id = $1
+SELECT user_id, has_notifications, notification_time, timezone FROM settings WHERE user_id = $1
 `
 
 func (q *Queries) GetSettings(ctx context.Context, userID uuid.UUID) (Setting, error) {
@@ -64,7 +64,6 @@ func (q *Queries) GetSettings(ctx context.Context, userID uuid.UUID) (Setting, e
 		&i.HasNotifications,
 		&i.NotificationTime,
 		&i.Timezone,
-		&i.Version,
 	)
 	return i, err
 }
@@ -102,10 +101,9 @@ const patchSettings = `-- name: PatchSettings :one
 UPDATE settings SET
     has_notifications = COALESCE($1, has_notifications),
     notification_time = COALESCE($2, notification_time),
-    timezone          = COALESCE($3, timezone),
-    version           = version + 1
-WHERE user_id = $4 AND version = $5::int
-RETURNING user_id, has_notifications, notification_time, timezone, version
+    timezone          = COALESCE($3, timezone)
+WHERE user_id = $4
+RETURNING user_id, has_notifications, notification_time, timezone
 `
 
 type PatchSettingsParams struct {
@@ -113,7 +111,6 @@ type PatchSettingsParams struct {
 	NotificationTime pgtype.Time
 	Timezone         *string
 	UserID           uuid.UUID
-	BaseVersion      int32
 }
 
 func (q *Queries) PatchSettings(ctx context.Context, arg PatchSettingsParams) (Setting, error) {
@@ -122,7 +119,6 @@ func (q *Queries) PatchSettings(ctx context.Context, arg PatchSettingsParams) (S
 		arg.NotificationTime,
 		arg.Timezone,
 		arg.UserID,
-		arg.BaseVersion,
 	)
 	var i Setting
 	err := row.Scan(
@@ -130,7 +126,6 @@ func (q *Queries) PatchSettings(ctx context.Context, arg PatchSettingsParams) (S
 		&i.HasNotifications,
 		&i.NotificationTime,
 		&i.Timezone,
-		&i.Version,
 	)
 	return i, err
 }

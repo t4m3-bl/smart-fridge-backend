@@ -38,44 +38,53 @@ type SettingsChanges struct {
 }
 
 type SettingsPatch struct {
-	UserID      UserID
-	BaseVersion int32
+	UserID UserID
 	SettingsChanges
 }
 
-func NewSettingsPatch(userID UserID, baseVersion int32, c SettingsChanges) (*SettingsPatch, error) {
+func NewSettingsPatch(userID UserID, c SettingsChanges) (*SettingsPatch, error) {
 	if uuid.UUID(userID) == uuid.Nil {
 		return nil, NewValidationErr("userId", "user id must not be nil")
 	}
-	if baseVersion < 1 {
-		return nil, NewValidationErr("version", "must be >= 1")
+	if err := c.Validate(); err != nil {
+		return nil, err
 	}
+
+	return &SettingsPatch{UserID: userID, SettingsChanges: c}, nil
+}
+
+func (c *SettingsChanges) Validate() error {
 	if c.HasNotifications == nil && c.NotificationTime == nil && c.Timezone == nil && c.Indicators == nil {
-		return nil, NewValidationErr("body", "at least one field is required")
+		return NewValidationErr("body", "at least one field is required")
 	}
-
 	if t := c.NotificationTime; t != nil && (*t < 0 || *t >= 24*time.Hour) {
-		return nil, NewValidationErr("notificationTime", "must be between 00:00:00 and 23:59:59")
+		return NewValidationErr("notificationTime", "must be between 00:00:00 and 23:59:59")
 	}
-
-	if tz := c.Timezone; tz != nil {
-		if *tz == "" || *tz == "Local" || len(*tz) > MaxTimezoneLen {
-			return nil, NewValidationErr("timezone", "must be an IANA time zone name")
-		}
-		if _, err := time.LoadLocation(*tz); err != nil {
-			return nil, NewValidationErr("timezone", "unknown time zone")
-		}
+	if err := c.validateTimezone(); err != nil {
+		return err
 	}
-
 	if c.Indicators != nil {
 		list, err := normalizeIndicators(*c.Indicators)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		c.Indicators = &list
 	}
+	return nil
+}
 
-	return &SettingsPatch{UserID: userID, BaseVersion: baseVersion, SettingsChanges: c}, nil
+func (c *SettingsChanges) validateTimezone() error {
+	if c.Timezone == nil {
+		return nil
+	}
+	tz := *c.Timezone
+	if tz == "" || tz == "Local" || len(tz) > MaxTimezoneLen {
+		return NewValidationErr("timezone", "must be an IANA time zone name")
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return NewValidationErr("timezone", "unknown time zone")
+	}
+	return nil
 }
 
 func normalizeIndicators(in []Indicator) ([]Indicator, error) {

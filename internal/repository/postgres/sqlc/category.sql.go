@@ -7,50 +7,15 @@ package sqlc
 
 import (
 	"context"
-
-	"github.com/google/uuid"
 )
 
-const createCategory = `-- name: CreateCategory :exec
-INSERT INTO categories (user_id, id, name) VALUES ($1, $2, $3)
-`
-
-type CreateCategoryParams struct {
-	UserID uuid.UUID
-	ID     uuid.UUID
-	Name   string
-}
-
-func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) error {
-	_, err := q.db.Exec(ctx, createCategory, arg.UserID, arg.ID, arg.Name)
-	return err
-}
-
-const deleteCategory = `-- name: DeleteCategory :execrows
-DELETE FROM categories
-WHERE user_id = $1 AND id = $2 AND version = $3::int
-`
-
-type DeleteCategoryParams struct {
-	UserID      uuid.UUID
-	ID          uuid.UUID
-	BaseVersion int32
-}
-
-func (q *Queries) DeleteCategory(ctx context.Context, arg DeleteCategoryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteCategory, arg.UserID, arg.ID, arg.BaseVersion)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const listCategories = `-- name: ListCategories :many
-SELECT user_id, id, name, version FROM categories WHERE user_id = $1 ORDER BY id
+SELECT id, name FROM categories
+ORDER BY name
 `
 
-func (q *Queries) ListCategories(ctx context.Context, userID uuid.UUID) ([]Category, error) {
-	rows, err := q.db.Query(ctx, listCategories, userID)
+func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := q.db.Query(ctx, listCategories)
 	if err != nil {
 		return nil, err
 	}
@@ -58,12 +23,7 @@ func (q *Queries) ListCategories(ctx context.Context, userID uuid.UUID) ([]Categ
 	var items []Category
 	for rows.Next() {
 		var i Category
-		if err := rows.Scan(
-			&i.UserID,
-			&i.ID,
-			&i.Name,
-			&i.Version,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -72,29 +32,4 @@ func (q *Queries) ListCategories(ctx context.Context, userID uuid.UUID) ([]Categ
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateCategory = `-- name: UpdateCategory :execrows
-UPDATE categories SET name = $1, version = version + 1
-WHERE user_id = $2 AND id = $3 AND version = $4::int
-`
-
-type UpdateCategoryParams struct {
-	Name        string
-	UserID      uuid.UUID
-	ID          uuid.UUID
-	BaseVersion int32
-}
-
-func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateCategory,
-		arg.Name,
-		arg.UserID,
-		arg.ID,
-		arg.BaseVersion,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }

@@ -71,7 +71,6 @@ func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServer
 
 	// routes and controllers registration
 	imageLimit := echoMiddleware.BodyLimitWithConfig(echoMiddleware.BodyLimitConfig{
-		LimitBytes: cfg.Storage.MaxImageSize + 64*1024,
 		Skipper: func(c *echo.Context) bool {
 			return c.Request().Method != http.MethodPost || c.Path() != "/api/v1/products/:id/image"
 		},

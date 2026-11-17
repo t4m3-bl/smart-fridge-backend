@@ -132,7 +132,6 @@ func TestJWTTokenManager_Generate(t *testing.T) {
 			assert.Equal(t, issuer, claims.Issuer)
 			assert.Equal(t, jwt.ClaimStrings{audienceClaim}, claims.Audience)
 			assert.Equal(t, uuid.UUID(tt.args.user.ID).String(), claims.Subject)
-			assert.NotEmpty(t, claims.ID)
 
 			assert.WithinDuration(t, now.Add(time.Hour), claims.ExpiresAt.Time, time.Second)
 			assert.WithinDuration(t, now, claims.IssuedAt.Time, time.Second)

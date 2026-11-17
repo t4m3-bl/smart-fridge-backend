@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
@@ -52,6 +51,7 @@ func (c *ImageController) PrepareProductImageUploads(
 			OperationId:     upload.OperationID,
 			UploadUrl:       upload.UploadURL,
 			ObjectId:        upload.ObjectID,
+			ImageKey:        upload.ImageKey,
 			ExpiresAt:       upload.ExpiresAt,
 			RequiredHeaders: upload.RequiredHeaders,
 		})
@@ -60,58 +60,4 @@ func (c *ImageController) PrepareProductImageUploads(
 	return api.PrepareProductImageUploads200JSONResponse{
 		Uploads: response,
 	}, nil
-}
-
-func (c *ImageController) CompleteProductImageUploads(ctx context.Context, request api.CompleteProductImageUploadsRequestObject) (api.CompleteProductImageUploadsResponseObject, error) {
-	userID, err := middleware.GetUserID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	inputs := make([]dto.ImageCompleteInput, 0, len(request.Body.Uploads))
-	for _, upload := range request.Body.Uploads {
-		inputs = append(inputs, dto.ImageCompleteInput{
-			OperationID: upload.OperationId,
-			ObjectID:    upload.ObjectId,
-		})
-	}
-
-	results, err := c.service.CompleteUploads(ctx, domain.UserID(userID), inputs)
-	if err != nil {
-		return nil, err
-	}
-
-	response := make([]api.ProductImageCompleteResultItem, 0, len(results))
-	for _, result := range results {
-		item := api.ProductImageCompleteResultItem{
-			OperationId: result.OperationID,
-			ImageKey:    result.ImageKey,
-		}
-
-		if result.Err != nil {
-			item.Error = mapImageError(result.Err)
-		}
-
-		response = append(response, item)
-	}
-
-	return api.CompleteProductImageUploads200JSONResponse{
-		Results: response,
-	}, nil
-}
-
-func mapImageError(err error) *api.Error {
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		return &api.Error{
-			Code:    "not_found",
-			Message: "Uploaded image was not found in storage",
-		}
-
-	default:
-		return &api.Error{
-			Code:    "operation_failed",
-			Message: "Image operation failed",
-		}
-	}
 }

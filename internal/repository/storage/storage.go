@@ -78,6 +78,37 @@ func (s *S3Storage) PresignPut(
 	return request.URL, s.getHeaders(request), nil
 }
 
+func (s *S3Storage) getHeaders(request *v4.PresignedHTTPRequest) map[string]string {
+	headers := make(map[string]string, len(request.SignedHeader))
+	for name, values := range request.SignedHeader {
+		if strings.EqualFold(name, "host") || len(values) == 0 {
+			continue
+		}
+
+		headers[name] = strings.Join(values, ",")
+	}
+
+	return headers
+}
+
+func (s *S3Storage) PresignGet(
+	ctx context.Context,
+	key string,
+	downloadTTL time.Duration,
+) (string, error) {
+	request, err := s.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	},
+		s3.WithPresignExpires(downloadTTL),
+	)
+	if err != nil {
+		return "", fmt.Errorf("presign image download: %w", err)
+	}
+
+	return request.URL, nil
+}
+
 func (s *S3Storage) ObjectExists(ctx context.Context, key string) (bool, error) {
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -91,19 +122,6 @@ func (s *S3Storage) ObjectExists(ctx context.Context, key string) (bool, error) 
 	}
 
 	return true, nil
-}
-
-func (s *S3Storage) getHeaders(request *v4.PresignedHTTPRequest) map[string]string {
-	headers := make(map[string]string, len(request.SignedHeader))
-	for name, values := range request.SignedHeader {
-		if strings.EqualFold(name, "host") || len(values) == 0 {
-			continue
-		}
-
-		headers[name] = strings.Join(values, ",")
-	}
-
-	return headers
 }
 
 func (s *S3Storage) Delete(ctx context.Context, key string) error {

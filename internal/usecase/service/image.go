@@ -12,6 +12,7 @@ import (
 
 type ImageStorage interface {
 	PresignPut(ctx context.Context, key, contentType string, uploadTTL time.Duration) (string, map[string]string, error)
+	PresignGet(ctx context.Context, key string, downloadTTL time.Duration) (string, error)
 	ObjectExists(ctx context.Context, key string) (bool, error)
 	Delete(ctx context.Context, key string) error
 }
@@ -53,6 +54,7 @@ func (s *ProductImageService) PrepareUploads(ctx context.Context, userID domain.
 		targets = append(targets, dto.ImageUploadTarget{
 			OperationID:     input.OperationID,
 			ObjectID:        objectID.String(),
+			ImageKey:        key,
 			UploadURL:       uploadURL,
 			ExpiresAt:       time.Now().UTC().Add(s.uploadTTL),
 			RequiredHeaders: headers,
@@ -60,48 +62,6 @@ func (s *ProductImageService) PrepareUploads(ctx context.Context, userID domain.
 	}
 
 	return targets, nil
-}
-
-// CompleteUploads verifies uploaded objects and returns their ImageKeys.
-// It does not modify products.
-func (s *ProductImageService) CompleteUploads(
-	ctx context.Context,
-	userID domain.UserID,
-	inputs []dto.ImageCompleteInput,
-) ([]dto.ImageCompleteResult, error) {
-	results := make([]dto.ImageCompleteResult, 0, len(inputs))
-
-	for _, input := range inputs {
-		result := dto.ImageCompleteResult{
-			OperationID: input.OperationID,
-		}
-
-		objectID := makeUploadObjectID(userID, input.OperationID)
-
-		if input.ObjectID != objectID.String() {
-			result.Err = domain.ErrNotFound
-			results = append(results, result)
-			continue
-		}
-
-		key := productImageKey(userID, input.OperationID, objectID)
-
-		exists, err := s.storage.ObjectExists(ctx, key)
-		if err != nil {
-			return nil, fmt.Errorf("inspect uploaded product image: %w", err)
-		}
-
-		if !exists {
-			result.Err = domain.ErrNotFound
-			results = append(results, result)
-			continue
-		}
-
-		result.ImageKey = &key
-		results = append(results, result)
-	}
-
-	return results, nil
 }
 
 func productImageKey(

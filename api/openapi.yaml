@@ -313,39 +313,6 @@ paths:
           $ref: "#/components/responses/BadGateway"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-  /products/images/batch/complete:
-    post:
-      tags: [ products ]
-      summary: Complete image uploads
-      description: >-
-        Verifies uploaded files and returns their backend-issued image keys.
-        The client attaches image keys to products through the product batch endpoint.
-      operationId: completeProductImageUploads
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProductImageCompleteRequest"
-      responses:
-        "200":
-          description: Results for each completed upload.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProductImageCompleteBatchResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
   /categories:
     get:
       tags:
@@ -463,7 +430,7 @@ components:
       description: A product in the user's fridge. Writable fields are supplied by the client;
         `id` and `version` are controlled by the server.
       type: object
-      required: [id, name, categoryId, expiresAt, imageKey, version]
+      required: [id, name, categoryId, expiresAt, imageKey, imageUrl, version]
       properties:
         id:
           type: string
@@ -486,6 +453,11 @@ components:
           type: [string, "null"]
           minLength: 1
           description: Storage object key issued by the backend; null when the product has no image.
+        imageUrl:
+          type: [ string, "null" ]
+          format: uri
+          readOnly: true
+          description: Short-lived presigned URL for downloading the product image. Null when the product has no image.
         manufacturedAt:
           type: string
           format: date
@@ -753,7 +725,7 @@ components:
             $ref: "#/components/schemas/ProductImageUpload"
     ProductImageUploadTarget:
       type: object
-      required: [operationId, uploadUrl, objectId, expiresAt, requiredHeaders]
+      required: [operationId, uploadUrl, objectId, imageKey, expiresAt, requiredHeaders]
       properties:
         operationId:
           type: string
@@ -762,6 +734,10 @@ components:
           type: string
           format: uri
           description: Short-lived presigned URL. Do not persist or share it.
+        imageKey:
+          type: string
+          minLength: 1
+          description: Storage object key to attach to the product after successful upload.
         objectId:
           type: string
           description: Opaque upload identifier used to complete the upload.
@@ -780,46 +756,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProductImageUploadTarget"
-    ProductImageCompleteItem:
-      type: object
-      required: [ operationId, objectId ]
-      properties:
-        operationId:
-          type: string
-          format: uuid
-        objectId:
-          type: string
-    ProductImageCompleteRequest:
-      type: object
-      required: [uploads]
-      properties:
-        uploads:
-          type: array
-          minItems: 1
-          maxItems: 20
-          items:
-            $ref: "#/components/schemas/ProductImageCompleteItem"
-      description: Uploaded objects to verify and obtain backend-issued image keys.
-    ProductImageCompleteResultItem:
-      type: object
-      required: [ operationId ]
-      properties:
-        operationId:
-          type: string
-          format: uuid
-        imageKey:
-          type: string
-          description: Backend-issued storage object key.
-        error:
-          $ref: "#/components/schemas/Error"
-    ProductImageCompleteBatchResponse:
-      type: object
-      required: [ results ]
-      properties:
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProductImageCompleteResultItem"
   parameters:
     OAuthProvider:
       name: provider

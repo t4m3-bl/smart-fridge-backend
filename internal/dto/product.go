@@ -26,3 +26,8 @@ type DeleteProductInput struct {
 	ProductID       domain.ProductID
 	ExpectedVersion int32
 }
+
+type ProductOutput struct {
+	Product  *domain.Product
+	ImageURL *string
+}

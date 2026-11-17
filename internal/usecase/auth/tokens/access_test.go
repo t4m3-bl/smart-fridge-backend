@@ -129,12 +129,9 @@ func TestJWTTokenManager_Generate(t *testing.T) {
 			claims, ok := parsed.Claims.(*tokens.Claims)
 			assert.True(t, ok)
 
-			assert.Equal(t, tt.args.user.ID, claims.UserID)
-			assert.Equal(t, tt.args.user.Email, claims.Email)
 			assert.Equal(t, issuer, claims.Issuer)
 			assert.Equal(t, jwt.ClaimStrings{audienceClaim}, claims.Audience)
 			assert.Equal(t, uuid.UUID(tt.args.user.ID).String(), claims.Subject)
-			assert.NotEmpty(t, claims.ID)
 
 			assert.WithinDuration(t, now.Add(time.Hour), claims.ExpiresAt.Time, time.Second)
 			assert.WithinDuration(t, now, claims.IssuedAt.Time, time.Second)

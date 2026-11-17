@@ -8,9 +8,8 @@ import (
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
-	"smart-fridge-backend/internal/transport/http/cookie"
+	"smart-fridge-backend/internal/transport/http/utils/cookie"
 	"smart-fridge-backend/internal/usecase/service"
-	"strings"
 
 	"github.com/labstack/echo/v5"
 )
@@ -118,7 +117,7 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 	}
 
 	if p.Error != nil {
-		return c.redirectWithErrorOnCallback(c.frontendPath("/login"), *p.Error), nil
+		return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), *p.Error), nil
 	}
 
 	if p.Code == nil || *p.Code == "" {
@@ -133,9 +132,9 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrAlreadyExists):
-			return c.redirectWithErrorOnCallback(c.frontendPath("/login"), "already_exists"), nil
+			return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), "already_exists"), nil
 		case errors.Is(err, domain.ErrProviderUnavailable):
-			return c.redirectWithErrorOnCallback(c.frontendPath("/login"), "provider_unavailable"), nil
+			return c.redirectWithErrorOnCallback(fmt.Sprintf("%s/login", c.frontendURL), "provider_unavailable"), nil
 		}
 
 		return nil, err
@@ -143,7 +142,7 @@ func (c *AuthController) OauthCallback(ctx context.Context, request api.OauthCal
 
 	return api.OauthCallback302Response{
 		Headers: api.OauthCallback302ResponseHeaders{
-			Location: new(c.frontendPath("/fridge")),
+			Location: new(fmt.Sprintf("%s/fridge", c.frontendURL)),
 			SetCookie: []string{
 				c.cookies.ClearCookie(cookie.OAuthStateCookieName).String(),
 				c.cookies.ClearCookie(cookie.OAuthVerifierCookieName).String(),
@@ -197,8 +196,4 @@ func (c *AuthController) redirectWithErrorOnCallback(location, errStr string) ap
 			},
 		},
 	}
-}
-
-func (c *AuthController) frontendPath(path string) string {
-	return strings.TrimSuffix(string(c.frontendURL), "/") + path
 }

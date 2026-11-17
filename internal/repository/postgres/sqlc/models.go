@@ -12,10 +12,8 @@ import (
 )
 
 type Category struct {
-	ID      uuid.UUID
-	UserID  uuid.UUID
-	Name    string
-	Version int32
+	ID   int64
+	Name string
 }
 
 type Identity struct {
@@ -37,19 +35,19 @@ type Indicator struct {
 type Product struct {
 	ID                    uuid.UUID
 	UserID                uuid.UUID
+	CategoryID            int64
 	Name                  string
 	Description           *string
 	Quantity              *string
-	ImageLink             *string
-	ManufacturedAt        pgtype.Date
-	ExpiresAt             pgtype.Date
-	OpenedAt              pgtype.Date
+	ImageKey              *string
+	ManufacturedAt        *time.Time
+	ExpiresAt             time.Time
+	OpenedAt              *time.Time
 	ShelfLifeAfterOpening *int32
-	EffectiveExpiresAt    pgtype.Date
+	Version               int32
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
-	CategoryID            pgtype.UUID
-	Version               int32
+	EffectiveExpiresAt    *time.Time
 }
 
 type Session struct {
@@ -66,7 +64,6 @@ type Setting struct {
 	HasNotifications bool
 	NotificationTime pgtype.Time
 	Timezone         string
-	Version          int32
 }
 
 type User struct {

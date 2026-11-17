@@ -536,10 +536,9 @@ components:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'
         maxDays:
-          type: integer
+          type: [integer, "null"]
           format: int32
           minimum: 0
-          nullable: true
 
     ProductFields:
       description: Writable product fields. Updates replace all writable fields.
@@ -705,7 +704,7 @@ components:
           description: One result per submitted operation, in request order.
     ProductImageUpload:
       type: object
-      required: [ operationId, contentType, fileSize ]
+      required: [ operationId, contentType ]
       properties:
         operationId:
           type: string

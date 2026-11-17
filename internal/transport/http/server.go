@@ -64,6 +64,13 @@ func NewServer(cfg *config.Config, auth OpenApiAuthenticator, h api.StrictServer
 
 	// auth middleware
 	openAPIValidator := echomiddleware.OapiRequestValidatorWithOptions(spec, &echomiddleware.Options{
+		ErrorHandler: func(_ *echo.Context, err *echo.HTTPError) error {
+			var securityError *openapi3filter.SecurityRequirementsError
+			if errors.As(err, &securityError) {
+				return echo.ErrUnauthorized
+			}
+			return err
+		},
 		Options: openapi3filter.Options{
 			AuthenticationFunc: auth.Authenticate,
 		},

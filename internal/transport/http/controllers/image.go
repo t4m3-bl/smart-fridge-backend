@@ -51,6 +51,7 @@ func (c *ImageController) PrepareProductImageUploads(
 			OperationId:     upload.OperationID,
 			UploadUrl:       upload.UploadURL,
 			ObjectId:        upload.ObjectID,
+			ImageKey:        upload.ImageKey,
 			ExpiresAt:       upload.ExpiresAt,
 			RequiredHeaders: upload.RequiredHeaders,
 		})

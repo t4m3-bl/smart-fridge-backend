@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -81,7 +82,7 @@ func (r *ProductRepository) Create(
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("create product: %w", err)
+		return nil, productWriteError("create product", err)
 	}
 
 	return mapProduct(created), nil
@@ -107,7 +108,7 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("update product: %w", err)
+		return nil, productWriteError("update product", err)
 	}
 
 	return mapProduct(updated), nil
@@ -160,6 +161,9 @@ func (r *ProductRepository) GetImageKey(ctx context.Context, id domain.ProductID
 		ID:     uuid.UUID(id),
 		UserID: uuid.UUID(userID),
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get image key: %w", err)
 	}
@@ -184,4 +188,12 @@ func mapProduct(row sqlc.Product) *domain.Product {
 			ShelfLifeAfterOpening: row.ShelfLifeAfterOpening,
 		},
 	}
+}
+
+func productWriteError(operation string, err error) error {
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23503" && postgresError.ConstraintName == "products_category_id_fkey" {
+		return domain.NewValidationErr("categoryId", "category not found")
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }

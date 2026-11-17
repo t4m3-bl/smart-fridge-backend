@@ -63,7 +63,8 @@ func toSettingsChanges(b api.PatchSettingsJSONRequestBody) (domain.SettingsChang
 			return domain.SettingsChanges{}, domain.NewValidationErr("notificationTime", "must be HH:MM:SS")
 		}
 
-		c.NotificationTime = new(t.Sub(time.Time{}))
+		clock := time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute + time.Duration(t.Second())*time.Second
+		c.NotificationTime = &clock
 	}
 
 	if b.Indicators != nil {

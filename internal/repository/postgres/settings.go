@@ -73,6 +73,9 @@ func (r *SettingsRepository) Patch(ctx context.Context, p *domain.SettingsPatch)
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		q := r.q.WithTx(tx)
 		uid := uuid.UUID(p.UserID)
+		if err := q.CreateDefaultSettings(ctx, uid); err != nil {
+			return err
+		}
 
 		row, err := q.PatchSettings(ctx, sqlc.PatchSettingsParams{
 			UserID:           uid,

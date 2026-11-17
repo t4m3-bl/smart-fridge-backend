@@ -37,7 +37,7 @@ func (c *ProductController) ListProducts(ctx context.Context, _ api.ListProducts
 
 	items := make([]api.Product, 0, len(products))
 	for i := range products {
-		items = append(items, newProductOutput(&products[i]))
+		items = append(items, newProductOutput(products[i]))
 	}
 
 	return api.ListProducts200JSONResponse{
@@ -151,7 +151,7 @@ func (c *ProductController) executeOperation(ctx context.Context, userID domain.
 func newBatchResult(
 	operationID openapitypes.UUID,
 	productID openapitypes.UUID,
-	product *domain.Product,
+	product dto.ProductOutput,
 	err error,
 ) (api.ProductBatchResult, error) {
 	result := api.ProductBatchResult{
@@ -159,6 +159,7 @@ func newBatchResult(
 		Id:          productID,
 	}
 
+	var validationError domain.ValidationError
 	switch {
 	case errors.Is(err, domain.ErrAlreadyExists):
 		result.Error = &api.Error{
@@ -178,11 +179,14 @@ func newBatchResult(
 			Message: "Product not found",
 		}
 
-	default:
+	case errors.As(err, &validationError):
+		result.Error = &api.Error{Code: "validation_error", Message: validationError.Error()}
+
+	case err != nil:
 		return result, err
 	}
 
-	if product != nil {
+	if product.Product != nil {
 		result.Product = new(newProductOutput(product))
 	}
 
@@ -202,7 +206,8 @@ func toDomainProductData(fields api.ProductFields) domain.ProductData {
 	}
 }
 
-func newProductOutput(p *domain.Product) api.Product {
+func newProductOutput(output dto.ProductOutput) api.Product {
+	p := output.Product
 	out := api.Product{
 		Id:                    new(openapitypes.UUID(p.ID)),
 		Name:                  p.Name,
@@ -210,6 +215,7 @@ func newProductOutput(p *domain.Product) api.Product {
 		Description:           p.Description,
 		Quantity:              p.Quantity,
 		ImageKey:              p.ImageKey,
+		ImageUrl:              output.ImageURL,
 		ExpiresAt:             openapitypes.Date{Time: p.ExpiresAt},
 		ShelfLifeAfterOpening: p.ShelfLifeAfterOpening,
 		Version:               new(p.Version),

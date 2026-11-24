@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrPushNotConfigured       = errors.New("push_not_configured")
 	ErrImageStorageUnavailable = errors.New("image_storage_unavailable")
 	ErrImageStorageFailed      = errors.New("image_storage_failed")
 	ErrVersionConflict         = errors.New("version_conflict")

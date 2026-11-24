@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	PushBindingCookieName   = "push_binding"
 	RefreshTokenCookieName  = "refresh_token"
 	OAuthStateCookieName    = "oauth_state"
 	OAuthVerifierCookieName = "oauth_verifier"
@@ -24,7 +25,7 @@ func (f *Factory) CreateRefreshTokenCookie(value string, ttl time.Duration) *htt
 	return &http.Cookie{
 		Name:     RefreshTokenCookieName,
 		Value:    value,
-		Path:     "/api/v1/auth/refresh",
+		Path:     "/api/v1/auth/",
 		MaxAge:   int(ttl.Seconds()),
 		HttpOnly: true,
 		Secure:   f.secure,
@@ -60,9 +61,6 @@ func (f *Factory) CreateOAuthVerifierCookie(value string, ttl time.Duration) *ht
 
 func (f *Factory) ClearCookie(name string) *http.Cookie {
 	path := "/api/v1/auth/"
-	if name == RefreshTokenCookieName {
-		path = "/api/v1/auth/refresh"
-	}
 
 	// #nosec G124
 	return &http.Cookie{
@@ -74,4 +72,16 @@ func (f *Factory) ClearCookie(name string) *http.Cookie {
 		Secure:   f.secure,
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+func (f *Factory) CreatePushBindingCookie(value string, ttl time.Duration) *http.Cookie {
+	// #nosec G124 -- Secure is enabled in production and disabled only for local HTTP development.
+	return &http.Cookie{Name: PushBindingCookieName, Value: value, Path: "/api/v1/auth/", MaxAge: int(ttl.Seconds()), HttpOnly: true, Secure: f.secure, SameSite: http.SameSiteStrictMode}
+}
+
+func (f *Factory) ClearLegacyRefreshCookie() *http.Cookie {
+	// #nosec G124 -- Reuse the factory cookie attributes; only its legacy path changes.
+	cookie := f.ClearCookie(RefreshTokenCookieName)
+	cookie.Path = "/api/v1/auth/refresh"
+	return cookie
 }

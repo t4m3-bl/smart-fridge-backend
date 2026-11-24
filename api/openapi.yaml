@@ -114,6 +114,11 @@ paths:
       operationId: logout
       security: []
       parameters:
+        - name: push_binding
+          in: cookie
+          required: false
+          schema:
+            type: string
         - name: refresh_token
           in: cookie
           required: false
@@ -399,7 +404,7 @@ paths:
       tags:
         - push
       summary: Register or update push subscription
-      description: Registers the current browser subscription for the authenticated user.
+      description: Registers the current browser subscription for the authenticated user. An endpoint owned by another account returns 409.
       operationId: upsertPushSubscription
       requestBody:
         required: true
@@ -409,11 +414,23 @@ paths:
               $ref: "#/components/schemas/PushSubscriptionInput"
       responses:
         "200":
-          $ref: "#/components/responses/PushSubscriptionSuccess"
+          description: Subscription registered; binds this browser for logout.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushSubscriptionRegistered"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "500":
           $ref: "#/components/responses/InternalServerError"
 

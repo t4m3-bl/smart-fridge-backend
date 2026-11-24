@@ -61,6 +61,9 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 			return fmt.Errorf("add identity: %w", err)
 		}
 	}
+	if err := qtx.CreateDefaultSettings(ctx, uuid.UUID(user.ID)); err != nil {
+		return fmt.Errorf("create user settings: %w", err)
+	}
 	// --- TRANSACTION END ---
 
 	if err := tx.Commit(ctx); err != nil {

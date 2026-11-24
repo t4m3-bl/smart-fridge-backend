@@ -1,9 +1,13 @@
 package config
 
 import (
+	"bytes"
+	"crypto/ecdh"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"smart-fridge-backend/internal/domain"
 	"strings"
@@ -91,9 +95,38 @@ type Storage struct {
 }
 
 type Push struct {
-	Subject    string `mapstructure:"subject" validate:"required,email"`
-	PublicKey  string `mapstructure:"public_key" validate:"required"`
-	PrivateKey string `mapstructure:"private_key" validate:"required"`
+	Enabled        bool          `mapstructure:"enabled"`
+	Subject        string        `mapstructure:"subject"`
+	PublicKey      string        `mapstructure:"public_key"`
+	PrivateKey     string        `mapstructure:"private_key"`
+	PollInterval   time.Duration `mapstructure:"poll_interval" validate:"gt=0"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout" validate:"gt=0"`
+}
+
+func (p Push) Validate() error {
+	if !p.Enabled {
+		return nil
+	}
+	subject, err := url.Parse(p.Subject)
+	if err != nil || (subject.Scheme != "mailto" && subject.Scheme != "https") || (subject.Opaque == "" && subject.Host == "") {
+		return errors.New("push.subject must be a mailto: or https: contact URI")
+	}
+	secret, err := base64.RawURLEncoding.DecodeString(p.PrivateKey)
+	if err != nil {
+		return errors.New("invalid VAPID private key encoding")
+	}
+	key, err := ecdh.P256().NewPrivateKey(secret)
+	if err != nil {
+		return errors.New("invalid VAPID private key")
+	}
+	public, err := base64.RawURLEncoding.DecodeString(p.PublicKey)
+	if err != nil || !bytes.Equal(key.PublicKey().Bytes(), public) {
+		return errors.New("VAPID public/private keys do not match")
+	}
+	if p.RequestTimeout >= time.Minute {
+		return errors.New("push.request_timeout must be less than one minute")
+	}
+	return nil
 }
 
 func (s Storage) Enabled() bool {
@@ -106,6 +139,17 @@ const (
 )
 
 func Load() (*Config, error) {
+	cfg, err := loadConfig[Config]()
+	if err != nil {
+		return nil, err
+	}
+	if err = cfg.customValidate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	return cfg, nil
+}
+
+func loadConfig[T any]() (*T, error) {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("load .env: %w", err)
 	}
@@ -135,7 +179,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	var cfg Config
+	var cfg T
 	err := v.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
 		mapstructure.StringToTimeDurationHookFunc(),
 		mapstructure.StringToSliceHookFunc(","),
@@ -147,10 +191,6 @@ func Load() (*Config, error) {
 
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
-	}
-
-	if err := cfg.customValidate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
@@ -168,6 +208,7 @@ func (c *Config) customValidate() error {
 		errs = append(errs, errors.New("auth.jwt.refresh_ttl must be greater than auth.jwt.access_ttl"))
 	}
 
+	errs = append(errs, c.Push.ValidatePublicKey())
 	return errors.Join(errs...)
 }
 
@@ -185,6 +226,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.url", "")
 
 	v.SetDefault("storage.upload_ttl", "15m")
+	v.SetDefault("push.enabled", false)
+	v.SetDefault("push.poll_interval", "30s")
+	v.SetDefault("push.request_timeout", "10s")
 
 	v.SetDefault("auth.jwt_secret", "")
 	v.SetDefault("auth.jwt.access_ttl", "15m")
@@ -217,6 +261,7 @@ func bindEnvAliases(v *viper.Viper) error {
 	}
 
 	for _, key := range []string{
+		"push.enabled", "push.subject", "push.public_key", "push.private_key", "push.poll_interval", "push.request_timeout",
 		"storage.endpoint",
 		"storage.region",
 		"storage.bucket",
@@ -231,5 +276,20 @@ func bindEnvAliases(v *viper.Viper) error {
 		}
 	}
 
+	return nil
+}
+
+// API only needs the public key; private signing material belongs to the worker.
+func (p Push) ValidatePublicKey() error {
+	if !p.Enabled {
+		return nil
+	}
+	public, err := base64.RawURLEncoding.DecodeString(p.PublicKey)
+	if err != nil {
+		return errors.New("invalid VAPID public key encoding")
+	}
+	if _, err = ecdh.P256().NewPublicKey(public); err != nil {
+		return errors.New("invalid VAPID public key")
+	}
 	return nil
 }

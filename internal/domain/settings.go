@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -89,39 +88,35 @@ func (c *SettingsChanges) validateTimezone() error {
 
 func normalizeIndicators(in []Indicator) ([]Indicator, error) {
 	if len(in) > MaxIndicators {
-		return nil, NewValidationErr("indicators", fmt.Sprintf("at most %d indicators", MaxIndicators))
+		return nil, NewValidationErr("indicators", "at most 10 indicators")
 	}
-
 	out := make([]Indicator, 0, len(in))
 	colors := make(map[string]struct{}, len(in))
 	days := make(map[int32]struct{}, len(in))
-	hasNoLimit := false
-
+	hasUnlimited := false
 	for _, ind := range in {
 		if !indicatorColorRe.MatchString(ind.Color) {
 			return nil, NewValidationErr("indicators", "color must look like #RRGGBB")
 		}
 		color := strings.ToUpper(ind.Color)
-		if _, dup := colors[color]; dup {
+		if _, exists := colors[color]; exists {
 			return nil, NewValidationErr("indicators", "duplicate color")
 		}
 		colors[color] = struct{}{}
-
-		switch {
-		case ind.MaxDays == nil:
-			if hasNoLimit {
+		if ind.MaxDays == nil {
+			if hasUnlimited {
 				return nil, NewValidationErr("indicators", "only one indicator may have no maxDays")
 			}
-			hasNoLimit = true
-		case *ind.MaxDays < 0:
-			return nil, NewValidationErr("indicators", "maxDays must be >= 0")
-		default:
-			if _, dup := days[*ind.MaxDays]; dup {
+			hasUnlimited = true
+		} else {
+			if *ind.MaxDays < 0 {
+				return nil, NewValidationErr("indicators", "maxDays must be >= 0")
+			}
+			if _, exists := days[*ind.MaxDays]; exists {
 				return nil, NewValidationErr("indicators", "duplicate maxDays")
 			}
 			days[*ind.MaxDays] = struct{}{}
 		}
-
 		out = append(out, Indicator{Color: color, MaxDays: ind.MaxDays})
 	}
 	return out, nil

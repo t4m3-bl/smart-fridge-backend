@@ -2,37 +2,32 @@ package controllers
 
 import (
 	"context"
+	"crypto/rand"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"smart-fridge-backend/internal/transport/http/api"
 	"smart-fridge-backend/internal/transport/http/middleware"
-
-	"github.com/google/uuid"
+	"smart-fridge-backend/internal/transport/http/utils/cookie"
+	"smart-fridge-backend/internal/usecase/service"
+	"smart-fridge-backend/pkg/crypto/sha256"
+	"time"
 )
 
 type PushController struct {
-	repo           PushSubRepository
-	vapidPublicKey string
+	push    *service.PushService
+	cookies *cookie.Factory
 }
 
-type PushSubRepository interface {
-	Upsert(ctx context.Context, userID domain.UserID, input dto.PushSubscriptionInput) (uuid.UUID, error)
-	Revoke(ctx context.Context, userID domain.UserID, subscriptionID uuid.UUID) error
-}
-
-func NewPushController(repo PushSubRepository, key string) *PushController {
-	return &PushController{
-		repo:           repo,
-		vapidPublicKey: key,
-	}
+func NewPushController(push *service.PushService, cookies *cookie.Factory) *PushController {
+	return &PushController{push: push, cookies: cookies}
 }
 
 func (c *PushController) GetVapidPublicKey(_ context.Context, _ api.GetVapidPublicKeyRequestObject) (api.GetVapidPublicKeyResponseObject, error) {
-	return api.GetVapidPublicKey200JSONResponse{
-		VapidPublicKeySuccessJSONResponse: api.VapidPublicKeySuccessJSONResponse{
-			PublicKey: c.vapidPublicKey,
-		},
-	}, nil
+	key, err := c.push.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+	return api.GetVapidPublicKey200JSONResponse{VapidPublicKeySuccessJSONResponse: api.VapidPublicKeySuccessJSONResponse{PublicKey: key}}, nil
 }
 
 func (c *PushController) UpsertPushSubscription(ctx context.Context, request api.UpsertPushSubscriptionRequestObject) (api.UpsertPushSubscriptionResponseObject, error) {
@@ -40,21 +35,18 @@ func (c *PushController) UpsertPushSubscription(ctx context.Context, request api
 	if err != nil {
 		return nil, err
 	}
-
-	id, err := c.repo.Upsert(ctx, domain.UserID(userID), dto.PushSubscriptionInput{
-		Endpoint: request.Body.Endpoint,
-		P256DH:   request.Body.Keys.P256dh,
-		Auth:     request.Body.Keys.Auth,
-	},
-	)
+	if request.Body == nil {
+		return nil, domain.NewValidationErr("body", "required")
+	}
+	token := rand.Text()
+	hash := sha256.Hash(token)
+	id, err := c.push.Upsert(ctx, domain.UserID(userID), dto.PushSubscriptionInput{Endpoint: request.Body.Endpoint, P256DH: request.Body.Keys.P256dh, Auth: request.Body.Keys.Auth, LogoutTokenHash: &hash})
 	if err != nil {
 		return nil, err
 	}
-
 	return api.UpsertPushSubscription200JSONResponse{
-		PushSubscriptionSuccessJSONResponse: api.PushSubscriptionSuccessJSONResponse{
-			Id: id,
-		},
+		Body:    api.PushSubscriptionRegistered{Id: id},
+		Headers: api.UpsertPushSubscription200ResponseHeaders{SetCookie: []string{c.cookies.CreatePushBindingCookie(token, 365*24*time.Hour).String()}},
 	}, nil
 }
 
@@ -63,10 +55,8 @@ func (c *PushController) DeletePushSubscription(ctx context.Context, request api
 	if err != nil {
 		return nil, err
 	}
-
-	if err := c.repo.Revoke(ctx, domain.UserID(userID), request.SubscriptionId); err != nil {
+	if err = c.push.Revoke(ctx, domain.UserID(userID), request.SubscriptionId); err != nil {
 		return nil, err
 	}
-
 	return api.DeletePushSubscription204Response{}, nil
 }

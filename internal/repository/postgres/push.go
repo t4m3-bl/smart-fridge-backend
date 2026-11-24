@@ -25,14 +25,15 @@ func NewPushSubscriptionRepository(pool *pgxpool.Pool) *PushSubscriptionReposito
 
 func (r *PushSubscriptionRepository) Upsert(ctx context.Context, userID domain.UserID, input dto.PushSubscriptionInput) (uuid.UUID, error) {
 	id, err := r.q.UpsertPushSubscription(ctx, sqlc.UpsertPushSubscriptionParams{
-		UserID:   uuid.UUID(userID),
-		Endpoint: input.Endpoint,
-		P256dh:   input.P256DH,
-		Auth:     input.Auth,
+		UserID:          uuid.UUID(userID),
+		Endpoint:        input.Endpoint,
+		P256dh:          input.P256DH,
+		Auth:            input.Auth,
+		LogoutTokenHash: input.LogoutTokenHash,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, domain.ErrNotFound
+			return uuid.Nil, domain.ErrAlreadyExists
 		}
 		return uuid.Nil, fmt.Errorf("upsert push subscription: %w", err)
 	}
@@ -51,5 +52,12 @@ func (r *PushSubscriptionRepository) Revoke(ctx context.Context, userID domain.U
 		return fmt.Errorf("revoke push subscription: %w", err)
 	}
 
+	return nil
+}
+
+func (r *PushSubscriptionRepository) RevokeBrowser(ctx context.Context, hash string) error {
+	if err := r.q.RevokePushBrowser(ctx, &hash); err != nil {
+		return fmt.Errorf("revoke browser push: %w", err)
+	}
 	return nil
 }

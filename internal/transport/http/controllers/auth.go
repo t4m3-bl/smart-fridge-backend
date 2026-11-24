@@ -19,6 +19,7 @@ type AuthController struct {
 
 	auth    *service.AuthService
 	session *service.SessionService
+	push    *service.PushService
 
 	frontendURL config.FrontendURL
 }
@@ -28,9 +29,11 @@ func NewAuthController(
 	auth *service.AuthService,
 	session *service.SessionService,
 	frontendURL config.FrontendURL,
+	push *service.PushService,
 ) *AuthController {
 	return &AuthController{
 		cookies:     cookies,
+		push:        push,
 		auth:        auth,
 		session:     session,
 		frontendURL: frontendURL,
@@ -74,6 +77,11 @@ func (c *AuthController) Refresh(ctx context.Context, request api.RefreshRequest
 // Logout handles the request to log out of the system.
 func (c *AuthController) Logout(ctx context.Context, request api.LogoutRequestObject) (api.LogoutResponseObject, error) {
 	refresh := request.Params.RefreshToken
+	if request.Params.PushBinding != nil {
+		if err := c.push.RevokeBrowser(ctx, *request.Params.PushBinding); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := c.session.Revoke(ctx, refresh); err != nil {
 		return nil, err
@@ -83,6 +91,9 @@ func (c *AuthController) Logout(ctx context.Context, request api.LogoutRequestOb
 		Headers: api.Logout204ResponseHeaders{
 			SetCookie: []string{
 				c.cookies.ClearCookie(cookie.RefreshTokenCookieName).String(),
+				c.cookies.ClearCookie(cookie.PushBindingCookieName).String(),
+				// Clear cookies issued before the refresh-cookie path fix.
+				c.cookies.ClearLegacyRefreshCookie().String(),
 			},
 		},
 	}, nil
@@ -180,6 +191,7 @@ func (c *AuthController) newAuthSuccessResponse(pair dto.TokenPair) api.AuthSucc
 		Headers: api.AuthSuccessResponseHeaders{
 			SetCookie: []string{
 				c.cookies.CreateRefreshTokenCookie(pair.Refresh.Body, pair.Refresh.TTL).String(),
+				c.cookies.ClearLegacyRefreshCookie().String(),
 			},
 		},
 	}

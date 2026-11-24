@@ -5,6 +5,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      SMART_FRIDGE_PUSH_ENABLED: ${SMART_FRIDGE_PUSH_ENABLED:-false}
+      SMART_FRIDGE_PUSH_PUBLIC_KEY: ${SMART_FRIDGE_PUSH_PUBLIC_KEY:-}
       SMART_FRIDGE_AUTH_JWT_SECRET: ${SMART_FRIDGE_AUTH_JWT_SECRET}
       SMART_FRIDGE_OAUTH_YANDEX_CLIENT_ID: ${SMART_FRIDGE_OAUTH_YANDEX_CLIENT_ID}
       SMART_FRIDGE_OAUTH_YANDEX_CLIENT_SECRET: ${SMART_FRIDGE_OAUTH_YANDEX_CLIENT_SECRET}
@@ -37,6 +39,27 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  notification-worker:
+    build: .
+    image: smart-fridge-backend:latest
+    entrypoint: ["/notification-worker"]
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      SMART_FRIDGE_PUSH_ENABLED: ${SMART_FRIDGE_PUSH_ENABLED:-false}
+      SMART_FRIDGE_PUSH_SUBJECT: ${SMART_FRIDGE_PUSH_SUBJECT:-}
+      SMART_FRIDGE_PUSH_PUBLIC_KEY: ${SMART_FRIDGE_PUSH_PUBLIC_KEY:-}
+      SMART_FRIDGE_PUSH_PRIVATE_KEY: ${SMART_FRIDGE_PUSH_PRIVATE_KEY:-}
+      SMART_FRIDGE_PUSH_POLL_INTERVAL: ${SMART_FRIDGE_PUSH_POLL_INTERVAL:-30s}
+      SMART_FRIDGE_PUSH_REQUEST_TIMEOUT: ${SMART_FRIDGE_PUSH_REQUEST_TIMEOUT:-10s}
+      SMART_FRIDGE_APP_SHUTDOWN_TIMEOUT: 15s
+      SMART_FRIDGE_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   migrate:
     image: smart-fridge-backend:latest

@@ -32,7 +32,9 @@ jobs:
         env:
           CGO_ENABLED: "0"
           GOOS: linux
-        run: go build -trimpath -o bin/smart-fridge-backend ./cmd/smart-fridge-backend
+        run: |
+          go build -trimpath -o bin/smart-fridge-backend ./cmd/smart-fridge-backend
+          go build -trimpath -o bin/notification-worker ./cmd/notification-worker
 
   docker-build:
     name: docker build

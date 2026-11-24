@@ -11,6 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
+const revokePushBrowser = `-- name: RevokePushBrowser :exec
+UPDATE push_subscriptions SET revoked_at=now(),updated_at=now()
+WHERE logout_token_hash = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokePushBrowser(ctx context.Context, logoutTokenHash *string) error {
+	_, err := q.db.Exec(ctx, revokePushBrowser, logoutTokenHash)
+	return err
+}
+
 const revokePushSubscription = `-- name: RevokePushSubscription :exec
 UPDATE push_subscriptions
 SET
@@ -36,28 +46,30 @@ INSERT INTO push_subscriptions (
     user_id,
     endpoint,
     p256dh,
-    auth
+    auth, logout_token_hash
 )
 VALUES (
     $1,
     $2,
     $3,
-    $4
+    $4, $5
 )
 ON CONFLICT (endpoint) DO UPDATE SET
-    user_id = EXCLUDED.user_id,
     p256dh = EXCLUDED.p256dh,
     auth = EXCLUDED.auth,
     revoked_at = NULL,
-    updated_at = now()
+    updated_at = now(),
+    logout_token_hash = EXCLUDED.logout_token_hash
+WHERE push_subscriptions.user_id = EXCLUDED.user_id
 RETURNING id
 `
 
 type UpsertPushSubscriptionParams struct {
-	UserID   uuid.UUID
-	Endpoint string
-	P256dh   string
-	Auth     string
+	UserID          uuid.UUID
+	Endpoint        string
+	P256dh          string
+	Auth            string
+	LogoutTokenHash *string
 }
 
 func (q *Queries) UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) (uuid.UUID, error) {
@@ -66,6 +78,7 @@ func (q *Queries) UpsertPushSubscription(ctx context.Context, arg UpsertPushSubs
 		arg.Endpoint,
 		arg.P256dh,
 		arg.Auth,
+		arg.LogoutTokenHash,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)

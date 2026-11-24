@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartFridge — проверка Web Push</title>
+<style>body{font:16px/1.5 system-ui;max-width:760px;margin:32px auto;padding:0 16px}label{display:block;margin:12px 0}input,button{font:inherit;padding:8px}button{margin:4px}pre{white-space:pre-wrap;background:#eef3ef;padding:16px}input{max-width:100%;box-sizing:border-box}</style>
+<h1>Проверка Web Push</h1>
+<p>Локальный диагностический стенд. Используйте тестовый аккаунт. Подписка относится к этому origin; основное PWA не изменяется.</p>
+<label>Email <input id="email" type="email" autocomplete="username"></label>
+<label>Пароль <input id="password" type="password" autocomplete="current-password"></label>
+<button id="login">Войти</button><button id="register">Создать тестовый аккаунт</button>
+<button id="subscribe">Подписать этот браузер</button>
+<button id="local">Проверить только показ ОС</button>
+<button id="demo">Добавить 3 тестовых продукта</button>
+<button id="schedule">Назначить сводку через 2 минуты</button>
+<button id="settings">Показать настройки</button>
+<button id="disable">Отключить сводку для аккаунта</button>
+<button id="logout">Выйти и отключить этот браузер</button>
+<pre id="log" role="status">Сначала войдите. Пароль и access token не сохраняются на диск.</pre>
+<p>«Проверить только показ ОС» не обращается к серверу и не проверяет push-доставку. Для полной проверки подпишитесь, добавьте продукты и назначьте сводку. Для повторной проверки назначьте другое будущее время.</p>
+<script>
+let token = null;
+const log = value => { document.querySelector('#log').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); };
+async function api(path, method = 'GET', body) {
+ const response = await fetch('/api/v1' + path, {method, headers: {'Content-Type':'application/json', ...(token ? {Authorization:'Bearer '+token} : {})}, body:body === undefined ? undefined : JSON.stringify(body)});
+ const result = response.status === 204 ? null : await response.json();
+ if (!response.ok) throw new Error(result.message || 'HTTP '+response.status);
+ return result;
+}
+async function registration() { await navigator.serviceWorker.register('/sw.js'); return navigator.serviceWorker.ready; }
+function action(id, callback) { document.querySelector('#'+id).addEventListener('click', async () => { try {await callback();} catch(error) {log(error.message);} }); }
+async function login(path) {
+ const result = await api(path,'POST',{email:document.querySelector('#email').value,password:document.querySelector('#password').value});
+ token = result.accessToken; document.querySelector('#password').value=''; log('Вход выполнен. Подпишите браузер.');
+}
+action('login',()=>login('/auth/sign-in'));action('register',()=>login('/auth/sign-up'));
+action('subscribe',async()=>{
+ if (!token) throw new Error('Сначала войдите.');
+ if (!('PushManager' in window)) throw new Error('Web Push недоступен. На iPhone установите стенд как веб-приложение по HTTPS.');
+ if (await Notification.requestPermission() !== 'granted') throw new Error('Разрешение не выдано.');
+ const {publicKey}=await api('/push/vapid');const reg=await registration();
+ let sub=await reg.pushManager.getSubscription();
+ if(sub){await sub.unsubscribe();sub=null;}
+ const key=Uint8Array.from(atob(publicKey.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+ const result=await api('/push/subscriptions','PUT',sub.toJSON());log({subscriptionId:result.id,message:'Браузер подписан. Теперь добавьте тестовые продукты и назначьте сводку.'});
+});
+action('local',async()=>{const reg=await registration();await reg.showNotification('Локальная проверка',{body:'Показ ОС работает. Это ещё не проверка Web Push.'});log('Локальное уведомление показано.');});
+action('settings',async()=>log(await api('/settings')));
+action('disable',async()=>log(await api('/settings','PATCH',{hasNotifications:false})));
+action('demo',async()=>{
+ const settings=await api('/settings');const categories=await api('/categories');
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:settings.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const part=name=>parts.find(p=>p.type===name).value;
+ const today=part('year')+'-'+part('month')+'-'+part('day');
+ const day=offset=>{const date=new Date(today+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+offset);return date.toISOString().slice(0,10);};
+ const operations=[['Push: истекает сегодня',0],['Push: уже просрочен',-1],['Push: ещё свежий',100]].map(([name,offset])=>({operationId:crypto.randomUUID(),type:'create',id:crypto.randomUUID(),product:{name,categoryId:categories.items[0].id,expiresAt:day(offset),imageKey:null}}));
+ const result=await api('/products/batch','POST',{operations});log(result);
+});
+action('schedule',async()=>{
+ const settings=await api('/settings');
+ const future=new Date(Date.now()+120000);future.setSeconds(0,0);
+ const parts=new Intl.DateTimeFormat('en-GB',{timeZone:settings.timezone,hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(future);
+ const part=name=>parts.find(item=>item.type===name).value;
+ const clock=part('hour')+':'+part('minute')+':'+part('second');
+ await api('/settings','PATCH',{hasNotifications:true,notificationTime:clock});
+ log('Сводка назначена на '+clock+' ('+settings.timezone+'). Дождитесь обновления cron-расписания и назначенного времени.');
+});
+action('logout',async()=>{
+ try{const reg=await navigator.serviceWorker.getRegistration('/');const sub=await reg?.pushManager.getSubscription();if(sub)await sub.unsubscribe();}finally{await api('/auth/logout','POST');token=null;}
+ log('Выход выполнен, серверная подписка этого браузера отозвана.');
+});
+</script>
+</html>

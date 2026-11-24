@@ -51,14 +51,15 @@ type Product struct {
 }
 
 type PushSubscription struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Endpoint  string
-	P256dh    string
-	Auth      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	RevokedAt *time.Time
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	Endpoint        string
+	P256dh          string
+	Auth            string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	RevokedAt       *time.Time
+	LogoutTokenHash *string
 }
 
 type Session struct {

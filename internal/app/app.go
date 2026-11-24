@@ -24,7 +24,6 @@ func New(cfg *config.Config) *fx.App {
 	return fx.New(
 		fx.Supply(cfg),
 		fx.Supply(cfg.App.FrontendURL),
-		fx.Supply(cfg.Push.PublicKey),
 		fx.StopTimeout(cfg.App.ShutdownTimeout),
 
 		infrastructure,
@@ -74,6 +73,7 @@ var usecases = fx.Module("usecases",
 		newProductService,
 		newProductImageService,
 		service.NewSettingsService,
+		service.NewPushService,
 	),
 )
 

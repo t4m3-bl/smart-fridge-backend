@@ -66,15 +66,15 @@ jobs:
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
         run: scp deploy/compose.yml deploy/Caddyfile "$TARGET:/opt/smart-fridge/"
 
-      - name: Restart backend
+      - name: Restart backend and notification worker
         env:
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GHCR_TOKEN" | ssh "$TARGET" "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
           ssh "$TARGET" 'cd /opt/smart-fridge && \
-            docker compose pull backend migrate && \
-            docker compose up -d --remove-orphans backend caddy && \
+            docker compose pull backend notification-worker migrate && \
+            docker compose up -d --remove-orphans backend notification-worker caddy && \
             docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile && \
             docker image prune -f && \
             docker logout ghcr.io'

@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"log/slog"
 	"smart-fridge-backend/internal/domain"
 	"smart-fridge-backend/internal/dto"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type ProductRepository interface {

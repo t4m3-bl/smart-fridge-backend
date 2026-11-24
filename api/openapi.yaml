@@ -21,6 +21,8 @@ tags:
     description: Categories of products
   - name: settings
     description: User settings
+  - name: push
+    description: Browser push subscription management
 
 security:
   - BearerAuth: []
@@ -378,8 +380,104 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /push/vapid:
+    get:
+      tags:
+        - push
+      summary: Get VAPID public key
+      description: Returns the public VAPID key used by the browser to create a push subscription.
+      operationId: getVapidPublicKey
+      security: [ ]
+      responses:
+        "200":
+          $ref: "#/components/responses/VapidPublicKeySuccess"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /push/subscriptions:
+    put:
+      tags:
+        - push
+      summary: Register or update push subscription
+      description: Registers the current browser subscription for the authenticated user.
+      operationId: upsertPushSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/PushSubscriptionSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /push/subscriptions/{subscriptionId}:
+    delete:
+      tags:
+        - push
+      summary: Revoke push subscription
+      description: Deactivates a push subscription owned by the authenticated user.
+      operationId: deletePushSubscription
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Subscription revoked.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   schemas:
+    VapidPublicKey:
+      type: object
+      required: [ publicKey ]
+      properties:
+        publicKey:
+          type: string
+          minLength: 1
+
+    PushSubscriptionInput:
+      type: object
+      required: [ endpoint, keys ]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 2048
+        keys:
+          type: object
+          required: [ p256dh, auth ]
+          properties:
+            p256dh:
+              type: string
+              minLength: 1
+              maxLength: 256
+            auth:
+              type: string
+              minLength: 1
+              maxLength: 256
+
+    PushSubscriptionRegistered:
+      type: object
+      required: [ id ]
+      properties:
+        id:
+          type: string
+          format: uuid
     Credentials:
       type: object
       required: [email, password]
@@ -790,6 +888,19 @@ components:
           Max-Age=600
 
   responses:
+    VapidPublicKeySuccess:
+      description: VAPID public key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/VapidPublicKey"
+
+    PushSubscriptionSuccess:
+      description: Push subscription registered successfully.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PushSubscriptionRegistered"
     AuthSuccess:
       description: Access token in body, refresh token in HttpOnly cookie
       headers:

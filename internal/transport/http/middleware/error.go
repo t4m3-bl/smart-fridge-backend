@@ -86,6 +86,12 @@ var domainErrMappings = []errMapping{
 		"provider_unavailable",
 		"",
 	},
+	{
+		domain.ErrPushNotConfigured,
+		http.StatusServiceUnavailable,
+		"push_not_configured",
+		"push notifications are not configured",
+	},
 }
 
 func HTTPErrorHandler(c *echo.Context, err error) {

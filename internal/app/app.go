@@ -24,6 +24,7 @@ func New(cfg *config.Config) *fx.App {
 	return fx.New(
 		fx.Supply(cfg),
 		fx.Supply(cfg.App.FrontendURL),
+		fx.Supply(cfg.Push.PublicKey),
 		fx.StopTimeout(cfg.App.ShutdownTimeout),
 
 		infrastructure,
@@ -51,6 +52,7 @@ var infrastructure = fx.Module("infrastructure",
 		fx.Annotate(postgres.NewSessionRepository,
 			fx.As(new(service.SessionRepository)),
 		),
+		fx.Annotate(postgres.NewPushSubscriptionRepository, fx.As(new(service.PushSubscriptionRepository))),
 	),
 	fx.Invoke(postgres.RegisterLifecycle),
 )
@@ -84,6 +86,7 @@ var transport = fx.Module("transport",
 		controllers.NewImageController,
 		controllers.NewCategoryController,
 		controllers.NewSettingController,
+		controllers.NewPushController,
 		fx.Annotate(httpserver.NewHandler, fx.As(new(api.StrictServerInterface))),
 		httpserver.NewServer,
 	),

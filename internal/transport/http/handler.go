@@ -16,6 +16,7 @@ type Handler struct {
 	*controllers.ProductController
 	*controllers.ImageController
 	*controllers.CategoryController
+	*controllers.PushController
 }
 
 func NewHandler(
@@ -24,6 +25,7 @@ func NewHandler(
 	product *controllers.ProductController,
 	image *controllers.ImageController,
 	category *controllers.CategoryController,
+	push *controllers.PushController,
 ) *Handler {
 	return &Handler{
 		AuthController:     auth,
@@ -31,6 +33,7 @@ func NewHandler(
 		ProductController:  product,
 		ImageController:    image,
 		CategoryController: category,
+		PushController:     push,
 	}
 }
 

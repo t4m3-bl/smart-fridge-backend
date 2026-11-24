@@ -50,6 +50,17 @@ type Product struct {
 	EffectiveExpiresAt    *time.Time
 }
 
+type PushSubscription struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Endpoint  string
+	P256dh    string
+	Auth      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	RevokedAt *time.Time
+}
+
 type Session struct {
 	ID               uuid.UUID
 	UserID           uuid.UUID

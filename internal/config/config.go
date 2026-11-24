@@ -22,6 +22,7 @@ type Config struct {
 	Auth     Auth     `mapstructure:"auth"`
 	Crypto   Crypto   `mapstructure:"crypto"`
 	Storage  Storage  `mapstructure:"storage"`
+	Push     Push     `mapstructure:"push"`
 }
 
 type FrontendURL string
@@ -87,6 +88,12 @@ type Storage struct {
 	SecretAccessKey string `mapstructure:"secret_access_key"`
 
 	UploadTTL time.Duration `mapstructure:"upload_ttl" validate:"required,gt=0"`
+}
+
+type Push struct {
+	Subject    string `mapstructure:"subject" validate:"required,email"`
+	PublicKey  string `mapstructure:"public_key" validate:"required"`
+	PrivateKey string `mapstructure:"private_key" validate:"required"`
 }
 
 func (s Storage) Enabled() bool {
